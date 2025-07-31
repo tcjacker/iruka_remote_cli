@@ -7,23 +7,23 @@ from flask import Flask, request, jsonify
 import logging
 import os
 import json
+from .config import get_config
 
-# --- Basic Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-AGENT_IMAGE_TAG = 'agent-service:latest'
-AGENT_INTERNAL_PORT = '5000'
-MAIN_SERVICE_PORT = 8081
+# --- Configuration ---
+config = get_config()
+logging.basicConfig(level=getattr(logging, config.LOG_LEVEL), format=config.LOG_FORMAT)
+logger = logging.getLogger(__name__)
 
 # --- Flask App and Docker Client Initialization ---
 app = Flask(__name__)
 try:
-    # Use the low-level APIClient with the verified socket path.
-    client = APIClient(base_url='unix:///Users/tc/.docker/run/docker.sock', user_agent='Docker-Py-Stable')
+    # Use the low-level APIClient with the configured socket path
+    client = APIClient(base_url=config.DOCKER_SOCKET_PATH, user_agent='Docker-Py-Stable')
     # Verify the connection
     client.ping()
-    logging.info("Successfully connected to Docker using APIClient.")
+    logger.info("Successfully connected to Docker using APIClient.")
 except Exception as e:
-    logging.error(f"CRITICAL: Failed to connect to Docker. Please ensure Docker is running. Error: {e}")
+    logger.error(f"CRITICAL: Failed to connect to Docker. Please ensure Docker is running. Error: {e}")
     exit(1)
 
 # --- In-memory storage for environment details ---
@@ -41,15 +41,15 @@ def create_environment():
             s.bind(('', 0))
             host_port = s.getsockname()[1]
 
-        logging.info(f"Creating container for new environment {env_id} on host port {host_port}...")
+        logger.info(f"Creating container for new environment {env_id} on host port {host_port}...")
 
         host_config = client.create_host_config(
-            port_bindings={AGENT_INTERNAL_PORT: host_port}
+            port_bindings={config.AGENT_INTERNAL_PORT: host_port}
         )
 
         container = client.create_container(
-            image=AGENT_IMAGE_TAG,
-            ports=[AGENT_INTERNAL_PORT],
+            image=config.AGENT_IMAGE_TAG,
+            ports=[config.AGENT_INTERNAL_PORT],
             host_config=host_config
         )
 
@@ -61,7 +61,7 @@ def create_environment():
             "status": "running"
         }
 
-        logging.info(f"Environment {env_id} created successfully with container ID {container['Id']}.")
+        logger.info(f"Environment {env_id} created successfully with container ID {container['Id']}.")
         return jsonify({
             "message": "Environment created successfully.",
             "env_id": env_id,
@@ -69,11 +69,11 @@ def create_environment():
         }), 201
 
     except Exception as e:
-        logging.error(f"Failed to create environment: {e}")
+        logger.error(f"Failed to create environment: {e}")
         # Check for the specific "No such image" error to give a helpful message.
         if 'No such image' in str(e):
-            logging.error("The agent-service:latest image was not found.")
-            logging.error("Please build it manually by running: docker build -t agent-service:latest ./agent")
+            logger.error("The agent-service:latest image was not found.")
+            logger.error("Please build it manually by running: docker build -t agent-service:latest ./agent")
             return jsonify(
                 {"error": "Failed to create environment: Agent image not found. Please build it first."}), 500
         return jsonify({"error": f"Failed to create environment: {str(e)}"}), 500
@@ -93,7 +93,7 @@ def execute_in_environment(env_id):
         return jsonify({"error": "Invalid request. 'command' field is required."}), 400
 
     command = data['command']
-    logging.info(f"Executing command in env {env_id} on port {port}: {command}")
+    logger.info(f"Executing command in env {env_id} on port {port}: {command}")
 
     try:
         agent_url = f"http://127.0.0.1:{port}/execute"
@@ -102,10 +102,10 @@ def execute_in_environment(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.Timeout:
-        logging.error(f"Request to agent in env {env_id} timed out.")
+        logger.error(f"Request to agent in env {env_id} timed out.")
         return jsonify({"error": "Agent execution timed out."}), 504
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to communicate with agent in env {env_id}: {e}")
+        logger.error(f"Failed to communicate with agent in env {env_id}: {e}")
         return jsonify({"error": f"Failed to communicate with agent: {str(e)}"}), 502
 
 
@@ -124,7 +124,7 @@ def gemini_chat_in_environment(env_id):
 
     prompt = data['prompt']
     api_key = data.get('api_key')  # Optional API key
-    logging.info(f"Sending Gemini prompt in env {env_id} on port {port}: {prompt[:100]}...")
+    logger.info(f"Sending Gemini prompt in env {env_id} on port {port}: {prompt[:100]}...")
 
     try:
         agent_url = f"http://127.0.0.1:{port}/gemini"
@@ -136,10 +136,10 @@ def gemini_chat_in_environment(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.Timeout:
-        logging.error(f"Gemini request to agent in env {env_id} timed out.")
+        logger.error(f"Gemini request to agent in env {env_id} timed out.")
         return jsonify({"error": "Gemini request timed out."}), 504
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to communicate with Gemini in env {env_id}: {e}")
+        logger.error(f"Failed to communicate with Gemini in env {env_id}: {e}")
         return jsonify({"error": f"Failed to communicate with Gemini: {str(e)}"}), 502
 
 
@@ -159,7 +159,7 @@ def gemini_status_in_environment(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to check Gemini status in env {env_id}: {e}")
+        logger.error(f"Failed to check Gemini status in env {env_id}: {e}")
         return jsonify({"error": f"Failed to check Gemini status: {str(e)}"}), 502
 
 
@@ -179,7 +179,7 @@ def restart_gemini_in_environment(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to restart Gemini in env {env_id}: {e}")
+        logger.error(f"Failed to restart Gemini in env {env_id}: {e}")
         return jsonify({"error": f"Failed to restart Gemini: {str(e)}"}), 502
 
 
@@ -197,7 +197,7 @@ def configure_gemini_in_environment(env_id):
         return jsonify({"error": "Invalid request. 'api_key' field is required."}), 400
 
     api_key = data['api_key']
-    logging.info(f"Configuring Gemini API key in env {env_id} on port {port}")
+    logger.info(f"Configuring Gemini API key in env {env_id} on port {port}")
 
     try:
         agent_url = f"http://127.0.0.1:{port}/gemini/configure"
@@ -206,7 +206,7 @@ def configure_gemini_in_environment(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to configure Gemini API key in env {env_id}: {e}")
+        logger.error(f"Failed to configure Gemini API key in env {env_id}: {e}")
         return jsonify({"error": f"Failed to configure API key: {str(e)}"}), 502
 
 
@@ -218,25 +218,25 @@ def delete_environment(env_id):
 
     env_details = environments[env_id]
     container_id = env_details['container_id']
-    logging.info(f"Deleting environment {env_id} (Container ID: {container_id})...")
+    logger.info(f"Deleting environment {env_id} (Container ID: {container_id})...")
 
     try:
-        logging.info(f"Stopping container {container_id}...")
+        logger.info(f"Stopping container {container_id}...")
         client.stop(container=container_id)
-        logging.info(f"Removing container {container_id}...")
+        logger.info(f"Removing container {container_id}...")
         client.remove_container(container=container_id)
 
         del environments[env_id]
 
-        logging.info(f"Environment {env_id} deleted successfully.")
+        logger.info(f"Environment {env_id} deleted successfully.")
         return jsonify({"message": f"Environment {env_id} deleted successfully."}), 200
 
     except docker.errors.NotFound:
-        logging.warning(f"Container {container_id} for env {env_id} not found.")
+        logger.warning(f"Container {container_id} for env {env_id} not found.")
         del environments[env_id]
         return jsonify({"message": "Container not found, environment record cleaned up."}), 200
     except Exception as e:
-        logging.error(f"Failed to delete environment {env_id}: {e}")
+        logger.error(f"Failed to delete environment {env_id}: {e}")
         return jsonify({"error": f"Failed to delete environment: {str(e)}"}), 500
 
 
@@ -257,7 +257,7 @@ def git_clone(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to clone repository in env {env_id}: {e}")
+        logger.error(f"Failed to clone repository in env {env_id}: {e}")
         return jsonify({"error": f"Failed to clone repository: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/git/status', methods=['GET'])
@@ -275,7 +275,7 @@ def git_status(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to get git status in env {env_id}: {e}")
+        logger.error(f"Failed to get git status in env {env_id}: {e}")
         return jsonify({"error": f"Failed to get git status: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/git/add', methods=['POST'])
@@ -293,7 +293,7 @@ def git_add(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to add files to git in env {env_id}: {e}")
+        logger.error(f"Failed to add files to git in env {env_id}: {e}")
         return jsonify({"error": f"Failed to add files: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/git/commit', methods=['POST'])
@@ -311,7 +311,7 @@ def git_commit(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to commit changes in env {env_id}: {e}")
+        logger.error(f"Failed to commit changes in env {env_id}: {e}")
         return jsonify({"error": f"Failed to commit changes: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/git/push', methods=['POST'])
@@ -329,7 +329,7 @@ def git_push(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to push changes in env {env_id}: {e}")
+        logger.error(f"Failed to push changes in env {env_id}: {e}")
         return jsonify({"error": f"Failed to push changes: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/git/pull', methods=['POST'])
@@ -347,7 +347,7 @@ def git_pull(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to pull changes in env {env_id}: {e}")
+        logger.error(f"Failed to pull changes in env {env_id}: {e}")
         return jsonify({"error": f"Failed to pull changes: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/files/list', methods=['GET'])
@@ -365,7 +365,7 @@ def list_files(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to list files in env {env_id}: {e}")
+        logger.error(f"Failed to list files in env {env_id}: {e}")
         return jsonify({"error": f"Failed to list files: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/files/read', methods=['GET'])
@@ -387,7 +387,7 @@ def read_file(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to read file in env {env_id}: {e}")
+        logger.error(f"Failed to read file in env {env_id}: {e}")
         return jsonify({"error": f"Failed to read file: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/files/write', methods=['POST'])
@@ -405,7 +405,7 @@ def write_file(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to write file in env {env_id}: {e}")
+        logger.error(f"Failed to write file in env {env_id}: {e}")
         return jsonify({"error": f"Failed to write file: {str(e)}"}), 502
 
 @app.route('/environments/<string:env_id>/execute', methods=['POST'])
@@ -423,7 +423,7 @@ def execute_command(env_id):
         return jsonify(response.json()), response.status_code
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to execute command in env {env_id}: {e}")
+        logger.error(f"Failed to execute command in env {env_id}: {e}")
         return jsonify({"error": f"Failed to execute command: {str(e)}"}), 502
 
 
@@ -433,5 +433,5 @@ def health_check():
     return jsonify({"status": "healthy", "service": "main_service"})
 
 if __name__ == '__main__':
-    logging.info("Starting main service. Please ensure 'agent-service:latest' image is built.")
-    app.run(host='0.0.0.0', port=MAIN_SERVICE_PORT)
+    logger.info("Starting main service. Please ensure 'agent-service:latest' image is built.")
+    app.run(host='0.0.0.0', port=config.MAIN_SERVICE_PORT)

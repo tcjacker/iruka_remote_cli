@@ -6,7 +6,6 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 AGENT_IMAGE_TAG = 'agent-service:latest'
 
-
 def build_agent_image():
     """Builds the agent Docker image using the low-level APIClient."""
     client = None
@@ -39,18 +38,17 @@ def build_agent_image():
         # The credential helper warning can sometimes be raised as an exception.
         # We check if the image was built anyway.
         if "docker-credential-desktop" in str(e):
-            logging.warning("Ignoring ignorable docker-credential-desktop warning and checking if image exists.")
-            try:
-                if client.images(name=AGENT_IMAGE_TAG):
-                    logging.info("Image found after credential warning. Build is considered successful.")
-                    return True
-            except Exception as check_e:
-                logging.error(f"Build failed after credential warning. Check error: {check_e}")
-                return False
-
+             logging.warning("Ignoring ignorable docker-credential-desktop warning and checking if image exists.")
+             try:
+                 if client.images(name=AGENT_IMAGE_TAG):
+                     logging.info("Image found after credential warning. Build is considered successful.")
+                     return True
+             except Exception as check_e:
+                 logging.error(f"Build failed after credential warning. Check error: {check_e}")
+                 return False
+        
         logging.error(f"An unexpected error occurred during image build: {e}")
         return False
-
 
 if __name__ == '__main__':
     if build_agent_image():
