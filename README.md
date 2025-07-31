@@ -1,8 +1,8 @@
-# Gemini CLI Docker集成系统 - 最终版本
+# Iruka Remote Cli
 
 ## 🎯 项目概述
 
-这是一个完整的Docker化Gemini CLI集成系统，通过Web API提供对Google Gemini AI的访问。系统采用微服务架构，支持多环境隔离和动态容器管理。
+这是一个完整的Docker化Gemini CLI集成系统，通过Web API提供对Google Gemini AI的访问。可以拉取git上代码进行远程代码编写，提交。
 
 ## 🏗️ 系统架构
 
