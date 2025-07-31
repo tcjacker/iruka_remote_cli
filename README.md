@@ -44,10 +44,7 @@
 
 ```bash
 # 克隆项目
-cd /Users/tc/ai/auto_cli
-
-# 激活虚拟环境
-source venv/bin/activate
+cd /xxx/auto_cli
 
 # 安装依赖
 pip install -r requirements.txt
