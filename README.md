@@ -1,237 +1,221 @@
-# Gemini CLI Docker集成系统 - 最终版本
+# 🚀 Gemini CLI Docker Git Integration
 
-## 🎯 项目概述
+A high-performance, containerized AI-assisted development system that integrates Google's Gemini AI with Git workflows in isolated Docker environments.
 
-这是一个完整的Docker化Gemini CLI集成系统，通过Web API提供对Google Gemini AI的访问。系统采用微服务架构，支持多环境隔离和动态容器管理。
+## ✨ Features
 
-## 🏗️ 系统架构
+- **⚡ Ultra-fast startup**: Optimized Docker containers with pre-installed Gemini CLI (8s vs 60-90s)
+- **🤖 AI-powered coding**: Generate, modify, and execute code using Google Gemini
+- **🔄 Complete Git integration**: Clone, commit, push, and manage repositories
+- **🛡️ Secure isolation**: Each environment runs in its own Docker container
+- **📡 RESTful API**: Full HTTP API for all operations
+- **🔧 Multi-environment**: Support for concurrent isolated development environments
+
+## 🏗️ Architecture
 
 ```
-前端/客户端 → 主服务(Flask) → Docker容器 → Gemini CLI → Google Gemini AI
+Frontend/Client → Main Service (Flask) → Agent Containers (Docker) → Gemini CLI + Git
 ```
 
-### 核心组件
+- **Main Service** (`main_service.py`): Central API gateway and environment manager
+- **Agent Containers**: Isolated Docker environments with Gemini CLI and Git
+- **RESTful API**: Complete HTTP API for all operations
 
-1. **主服务** (`main_service.py`) - Flask Web服务，管理Docker容器和API路由
-2. **Agent容器** (`agent/`) - 运行Gemini CLI的Docker容器
-3. **Gemini CLI** - Google官方的Gemini命令行工具
+## 🚀 Quick Start
 
-## ✅ 已实现功能
+### Prerequisites
 
-### 🔧 核心功能
-- ✅ Docker容器动态创建和管理
-- ✅ Gemini CLI自动安装和配置
-- ✅ API密钥安全管理
-- ✅ 多环境隔离支持
-- ✅ 实时对话交互
-- ✅ 容器健康检查
-- ✅ 自动清理机制
+- Docker
+- Python 3.8+
+- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
 
-### 🌐 API端点
+### Installation
 
-| 方法 | 端点 | 功能 |
-|------|------|------|
-| POST | `/environments` | 创建新的Docker环境 |
-| GET | `/environments/{id}/gemini/status` | 检查Gemini CLI状态 |
-| POST | `/environments/{id}/gemini/configure` | 配置API密钥 |
-| POST | `/environments/{id}/gemini` | 发送提示到Gemini |
-| POST | `/environments/{id}/gemini/restart` | 重启Gemini CLI |
-| DELETE | `/environments/{id}` | 删除环境 |
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd auto_cli
+   ```
 
-## 🚀 快速开始
+2. **Set up Python environment**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-### 1. 环境准备
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your Gemini API key
+   ```
+
+4. **Build Docker image**
+   ```bash
+   cd core/agent
+   docker build -t agent-service:latest .
+   cd ../..
+   ```
+
+5. **Start the main service**
+   ```bash
+   python main.py
+   ```
+
+## 📖 Usage
+
+### Basic Workflow
+
+1. **Create an environment**
+   ```bash
+   curl -X POST http://localhost:8081/environments
+   ```
+
+2. **Configure Gemini API key**
+   ```bash
+   curl -X POST http://localhost:8081/environments/{env_id}/gemini/configure \
+     -H "Content-Type: application/json" \
+     -d '{"api_key": "your_api_key"}'
+   ```
+
+3. **Clone a repository**
+   ```bash
+   curl -X POST http://localhost:8081/environments/{env_id}/git/clone \
+     -H "Content-Type: application/json" \
+     -d '{"repo_url": "https://github.com/user/repo.git", "target_dir": "./workspace"}'
+   ```
+
+4. **Generate code with AI**
+   ```bash
+   curl -X POST http://localhost:8081/environments/{env_id}/gemini \
+     -H "Content-Type: application/json" \
+     -d '{"prompt": "Write a Python function to calculate fibonacci numbers"}'
+   ```
+
+5. **Write and execute code**
+   ```bash
+   # Write file
+   curl -X POST http://localhost:8081/environments/{env_id}/files/write \
+     -H "Content-Type: application/json" \
+     -d '{"path": "fibonacci.py", "content": "generated_code_here"}'
+   
+   # Execute code
+   curl -X POST http://localhost:8081/environments/{env_id}/execute \
+     -H "Content-Type: application/json" \
+     -d '{"command": "python fibonacci.py"}'
+   ```
+
+6. **Commit changes**
+   ```bash
+   # Add files
+   curl -X POST http://localhost:8081/environments/{env_id}/git/add \
+     -H "Content-Type: application/json" \
+     -d '{"files": ["."]}'
+   
+   # Commit
+   curl -X POST http://localhost:8081/environments/{env_id}/git/commit \
+     -H "Content-Type: application/json" \
+     -d '{"message": "Add AI-generated fibonacci function"}'
+   ```
+
+### Demo Scripts
+
+Run the comprehensive demo to see all features:
 
 ```bash
-# 克隆项目
-cd /Users/tc/ai/auto_cli
-
-# 激活虚拟环境
-source venv/bin/activate
-
-# 安装依赖
-pip install -r requirements.txt
+python demos/demo_final_showcase.py
 ```
 
-### 2. 启动服务
+## 🔧 API Reference
+
+### Environment Management
+- `POST /environments` - Create new environment
+- `DELETE /environments/{id}` - Delete environment
+- `GET /health` - Health check
+
+### Gemini AI Integration
+- `POST /environments/{id}/gemini/configure` - Configure API key
+- `POST /environments/{id}/gemini` - Generate code with AI
+
+### Git Operations
+- `POST /environments/{id}/git/clone` - Clone repository
+- `GET /environments/{id}/git/status` - Check Git status
+- `POST /environments/{id}/git/add` - Add files to staging
+- `POST /environments/{id}/git/commit` - Commit changes
+- `POST /environments/{id}/git/push` - Push to remote
+- `POST /environments/{id}/git/pull` - Pull from remote
+
+### File System Operations
+- `GET /environments/{id}/files/list` - List files
+- `GET /environments/{id}/files/read` - Read file content
+- `POST /environments/{id}/files/write` - Write file content
+
+### Code Execution
+- `POST /environments/{id}/execute` - Execute shell commands
+
+## 🛡️ Security Features
+
+- **Container Isolation**: Each environment runs in isolated Docker containers
+- **Path Validation**: Prevents directory traversal attacks
+- **API Key Security**: Secure handling of Gemini API keys
+- **Workspace Isolation**: Each environment has its own workspace
+
+## 🔧 Configuration
+
+### Environment Variables
+
+See `.env.example` for all available configuration options.
+
+### Docker Optimization
+
+The system is optimized for fast startup:
+- Gemini CLI is pre-installed in the Docker image
+- Node.js 20+ for compatibility
+- Minimal startup script
+- Cached dependencies
+
+## 📊 Performance
+
+- **Container startup**: ~8 seconds (optimized from 60-90 seconds)
+- **Complete AI workflow**: ~25 seconds (create → code → commit → execute)
+- **Concurrent environments**: Supports multiple isolated environments
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📝 License
+
+[Add your license here]
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+1. **Docker build fails**: Ensure Docker is running and you have sufficient disk space
+2. **Gemini API errors**: Verify your API key is valid and has sufficient quota
+3. **Port conflicts**: Change `MAIN_SERVICE_PORT` in `.env` if port 8081 is in use
+
+### Cleanup
+
+To stop all services and clean up containers:
 
 ```bash
-# 启动主服务
-python main_service.py
+./cleanup.sh
 ```
 
-服务将在 `http://127.0.0.1:8080` 启动
+## 🔮 Future Enhancements
 
-### 3. 获取API密钥
-
-访问 [Google AI Studio](https://makersuite.google.com/app/apikey) 获取Gemini API密钥
-
-### 4. 使用示例
-
-#### 创建环境
-```bash
-curl -X POST http://127.0.0.1:8080/environments
-```
-
-#### 配置API密钥
-```bash
-curl -X POST http://127.0.0.1:8080/environments/{ENV_ID}/gemini/configure \
-  -H "Content-Type: application/json" \
-  -d '{"api_key": "YOUR_API_KEY"}'
-```
-
-#### 发送提示（配置API密钥后无需再传入）
-```bash
-curl -X POST http://127.0.0.1:8080/environments/{ENV_ID}/gemini \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello, what is Python?"}'
-```
-
-#### 可选：在请求中覆盖API密钥
-```bash
-curl -X POST http://127.0.0.1:8080/environments/{ENV_ID}/gemini \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello, what is Python?", "api_key": "DIFFERENT_API_KEY"}'
-```
-
-## 🧪 测试脚本
-
-### 完整功能演示
-```bash
-python demo_gemini_system.py
-```
-
-### API密钥测试
-```bash
-python test_gemini_with_api.py
-```
-
-## 📁 项目结构
-
-```
-auto_cli/
-├── main_service.py              # 主服务Flask应用
-├── agent/
-│   ├── Dockerfile              # Agent容器镜像定义
-│   ├── agent.py                # Agent服务代码
-│   ├── startup.sh              # 容器启动脚本
-│   └── requirements.txt        # Python依赖
-├── demo_gemini_system.py       # 完整演示脚本
-├── test_gemini_with_api.py     # API测试脚本
-├── README_FINAL.md             # 项目文档
-└── venv/                       # Python虚拟环境
-```
-
-## 🔍 技术细节
-
-### Docker镜像构建
-```bash
-# 设置代理（如需要）
-export https_proxy=http://127.0.0.1:7890
-export http_proxy=http://127.0.0.1:7890
-export all_proxy=socks5://127.0.0.1:7890
-
-# 构建镜像
-docker build -t agent-service:latest ./agent
-```
-
-### 容器启动流程
-1. 安装Node.js和npm
-2. 安装Gemini CLI (`npm install -g @google/gemini-cli`)
-3. 启动Python Flask服务
-4. 暴露端口5000供外部访问
-
-### API密钥管理
-- 支持环境变量 `GEMINI_API_KEY`
-- 支持配置文件 `~/.gemini/settings.json`
-- 支持请求中传递API密钥（可覆盖已配置的密钥）
-- **新功能**：配置后API密钥自动持久化，后续请求无需重复传入
-
-## 🛠️ 故障排查
-
-### 常见问题
-
-1. **容器启动慢**
-   - Gemini CLI安装需要时间，首次启动约60-90秒
-   - 检查网络连接和npm镜像源
-
-2. **API密钥错误**
-   - 确保API密钥有效
-   - 检查API密钥权限设置
-
-3. **端口冲突**
-   - 系统自动分配端口，避免冲突
-   - 检查防火墙设置
-
-### 调试命令
-
-```bash
-# 查看容器状态
-docker ps
-
-# 查看容器日志
-docker logs <CONTAINER_ID>
-
-# 测试容器健康
-curl http://127.0.0.1:<PORT>/health
-
-# 检查Gemini状态
-curl http://127.0.0.1:<PORT>/gemini/status
-```
-
-## 🔐 安全考虑
-
-- API密钥通过HTTPS传输（生产环境）
-- 容器间网络隔离
-- 自动清理临时文件
-- 限制容器资源使用
-
-## 📈 性能优化
-
-- 容器复用机制
-- 连接池管理
-- 请求超时控制
-- 内存使用监控
-
-## 🚀 部署建议
-
-### 生产环境
-1. 使用HTTPS
-2. 配置反向代理（Nginx）
-3. 设置容器资源限制
-4. 启用日志轮转
-5. 配置监控告警
-
-### 扩展性
-- 支持多实例部署
-- 可集成负载均衡
-- 支持容器编排（Kubernetes）
-
-## 📝 更新日志
-
-### v1.0 (当前版本)
-- ✅ 完整的Docker集成
-- ✅ Gemini CLI自动安装
-- ✅ Web API接口
-- ✅ 多环境支持
-- ✅ API密钥管理
-- ✅ 健康检查机制
-
-## 🤝 贡献指南
-
-1. Fork项目
-2. 创建功能分支
-3. 提交更改
-4. 创建Pull Request
-
-## 📄 许可证
-
-GPL-3.0 license
-
-## 📞 支持
-
-如有问题，请创建Issue或联系维护者（tcjack@126.com）。
+- [ ] Web-based UI
+- [ ] Multiple AI provider support
+- [ ] Advanced Git workflow automation
+- [ ] Code review integration
+- [ ] Team collaboration features
 
 ---
 
-**🎉 恭喜！你现在拥有一个完整的Gemini CLI Docker集成系统！**
+**Built with ❤️ for AI-assisted development**
