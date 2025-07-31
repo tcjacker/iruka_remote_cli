@@ -143,6 +143,115 @@ def gemini_chat_in_environment(env_id):
         return jsonify({"error": f"Failed to communicate with Gemini: {str(e)}"}), 502
 
 
+@app.route('/environments/<string:env_id>/gemini/interactive', methods=['POST'])
+def gemini_interactive_in_environment(env_id):
+    """Send an interactive prompt to Gemini CLI within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    data = request.get_json()
+    if not data or 'prompt' not in data:
+        return jsonify({"error": "Invalid request. 'prompt' field is required."}), 400
+
+    prompt = data['prompt']
+    api_key = data.get('api_key')  # Optional API key
+    logger.info(f"Sending interactive Gemini prompt in env {env_id} on port {port}: {prompt[:100]}...")
+
+    try:
+        agent_url = f"http://127.0.0.1:{port}/gemini/interactive"
+        payload = {"prompt": prompt}
+        if api_key:
+            payload["api_key"] = api_key
+        response = requests.post(agent_url, json=payload, timeout=120)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.Timeout:
+        logger.error(f"Interactive Gemini request to agent in env {env_id} timed out.")
+        return jsonify({"error": "Interactive Gemini request timed out."}), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to communicate with interactive Gemini in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to communicate with interactive Gemini: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/session', methods=['POST'])
+def gemini_session_in_environment(env_id):
+    """Send a prompt to a persistent Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    data = request.get_json()
+    if not data or 'prompt' not in data:
+        return jsonify({"error": "Invalid request. 'prompt' field is required."}), 400
+
+    prompt = data['prompt']
+    api_key = data.get('api_key')  # Optional API key
+    session_id = data.get('session_id', 'default')  # Optional session ID
+    logger.info(f"Sending persistent Gemini prompt in env {env_id} on port {port}: {prompt[:100]}...")
+
+    try:
+        agent_url = f"http://127.0.0.1:{port}/gemini/session"
+        payload = {"prompt": prompt, "session_id": session_id}
+        if api_key:
+            payload["api_key"] = api_key
+        response = requests.post(agent_url, json=payload, timeout=120)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.Timeout:
+        logger.error(f"Persistent Gemini request to agent in env {env_id} timed out.")
+        return jsonify({"error": "Persistent Gemini request timed out."}), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to communicate with persistent Gemini in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to communicate with persistent Gemini: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/session/<session_id>', methods=['DELETE'])
+def delete_gemini_session_in_environment(env_id, session_id):
+    """Delete a specific Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    try:
+        agent_url = f"http://127.0.0.1:{port}/gemini/session/{session_id}"
+        response = requests.delete(agent_url, timeout=30)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to delete Gemini session in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to delete Gemini session: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/sessions', methods=['GET'])
+def list_gemini_sessions_in_environment(env_id):
+    """List all active Gemini CLI sessions within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    try:
+        agent_url = f"http://127.0.0.1:{port}/gemini/sessions"
+        response = requests.get(agent_url, timeout=30)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to list Gemini sessions in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to list Gemini sessions: {str(e)}"}), 502
+
+
 @app.route('/environments/<string:env_id>/gemini/status', methods=['GET'])
 def gemini_status_in_environment(env_id):
     """Check Gemini CLI status within a specified agent environment."""
@@ -425,6 +534,46 @@ def execute_command(env_id):
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to execute command in env {env_id}: {e}")
         return jsonify({"error": f"Failed to execute command: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/session/status', methods=['GET'])
+def gemini_session_status_in_environment(env_id):
+    """Get status of the persistent Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    try:
+        agent_url = f"http://127.0.0.1:{port}/gemini/session/status"
+        response = requests.get(agent_url, timeout=10)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to get Gemini session status in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to get session status: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/session/reset', methods=['POST'])
+def reset_gemini_session_in_environment(env_id):
+    """Reset the persistent Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    try:
+        agent_url = f"http://127.0.0.1:{port}/gemini/session/reset"
+        response = requests.post(agent_url, timeout=30)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to reset Gemini session in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to reset session: {str(e)}"}), 502
 
 
 @app.route('/health', methods=['GET'])

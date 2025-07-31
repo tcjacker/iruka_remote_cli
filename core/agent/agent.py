@@ -1,6 +1,8 @@
 import subprocess
 import json
 import os
+import time
+import select
 from flask import Flask, request, jsonify
 import logging
 
@@ -9,6 +11,12 @@ logging.basicConfig(level=logging.INFO)
 
 # Global variable to store Gemini CLI process
 gemini_process = None
+
+# Global variable to store current working directory
+current_working_directory = os.getcwd()
+
+# Global variable to store the single persistent Gemini CLI session
+persistent_gemini_session = None
 
 def start_gemini_cli():
     """Start the Gemini CLI process if not already running"""
@@ -58,6 +66,7 @@ def get_configured_api_key():
     try:
         gemini_dir = os.path.expanduser('~/.gemini')
         settings_file = os.path.join(gemini_dir, 'settings.json')
+        
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
@@ -66,7 +75,132 @@ def get_configured_api_key():
         logging.error(f"Failed to read API key from settings: {e}")
     return None
 
-def send_to_gemini(prompt, api_key=None):
+def get_or_create_persistent_gemini_session(api_key=None):
+    """Get or create the single persistent Gemini CLI session for this container"""
+    global persistent_gemini_session
+    
+    logging.info(f"get_or_create_persistent_gemini_session called with api_key={'***' if api_key else None}")
+    
+    # Check if existing session is still alive
+    if persistent_gemini_session and persistent_gemini_session['process'].poll() is None:
+        logging.info("Reusing existing persistent Gemini session")
+        persistent_gemini_session['last_used'] = time.time()
+        return persistent_gemini_session
+    
+    # Create new session
+    try:
+        logging.info("Creating new persistent Gemini CLI session")
+        # Set up environment with API key
+        env = os.environ.copy()
+        
+        if not api_key:
+            logging.info("No API key provided, trying to get configured API key")
+            api_key = get_configured_api_key()
+        
+        if api_key:
+            logging.info("API key available, setting GEMINI_API_KEY environment variable")
+            env['GEMINI_API_KEY'] = api_key
+        else:
+            logging.error("No API key available - cannot create Gemini session")
+            return None
+        
+        # Start Gemini CLI in interactive mode (this maintains all context internally)
+        logging.info(f"Starting Gemini CLI process in directory: {current_working_directory}")
+        process = subprocess.Popen(
+            ['gemini'],  # No -p flag = interactive mode with full context memory
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=0,  # Unbuffered for real-time interaction
+            env=env,
+            cwd=current_working_directory
+        )
+        
+        # Wait a moment to see if process starts successfully
+        time.sleep(0.5)
+        if process.poll() is not None:
+            # Process has already terminated
+            stderr_output = process.stderr.read() if process.stderr else "No stderr"
+            logging.error(f"Gemini CLI process terminated immediately. Return code: {process.returncode}, stderr: {stderr_output}")
+            return None
+        
+        persistent_gemini_session = {
+            'process': process,
+            'created_at': time.time(),
+            'last_used': time.time()
+        }
+        
+        logging.info(f"Created persistent Gemini CLI session successfully (PID: {process.pid})")
+        return persistent_gemini_session
+        
+    except Exception as e:
+        logging.error(f"Failed to create persistent Gemini CLI session: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        return None
+
+def send_to_persistent_gemini_session(prompt, timeout=120):
+    """Send a prompt to the persistent Gemini CLI session"""
+    global persistent_gemini_session
+    
+    # Get or create the persistent session
+    session = get_or_create_persistent_gemini_session()
+    if not session:
+        return {"error": "Failed to create Gemini CLI session. Please check API key."}
+    
+    try:
+        process = session['process']
+        session['last_used'] = time.time()
+        
+        # Send prompt to the Gemini CLI process (it maintains all context internally)
+        process.stdin.write(prompt + '\n')
+        process.stdin.flush()
+        
+        # Read response with timeout
+        start_time = time.time()
+        response_lines = []
+        
+        while time.time() - start_time < timeout:
+            # Check if there's data to read
+            if select.select([process.stdout], [], [], 1.0)[0]:
+                line = process.stdout.readline()
+                if line:
+                    response_lines.append(line.rstrip())
+                    # Look for prompt indicators to know when response is complete
+                    if line.strip().endswith('> ') or line.strip().endswith('$ ') or 'gemini>' in line.lower():
+                        break
+            else:
+                # Check if process is still alive
+                if process.poll() is not None:
+                    break
+        
+        response = '\n'.join(response_lines)
+        return {
+            "response": response,
+            "persistent": True,
+            "context_maintained_by": "gemini_cli_internal"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error communicating with persistent Gemini session: {e}")
+        return {"error": f"Session communication error: {str(e)}"}
+
+def cleanup_persistent_gemini_session():
+    """Clean up the persistent Gemini CLI session if it's dead"""
+    global persistent_gemini_session
+    
+    if persistent_gemini_session:
+        # Check if process is dead
+        if persistent_gemini_session['process'].poll() is not None:
+            try:
+                persistent_gemini_session['process'].terminate()
+            except:
+                pass
+            persistent_gemini_session = None
+            logging.info("Cleaned up dead persistent Gemini CLI session")
+
+def send_to_gemini(prompt, api_key=None, interactive=False):
     """Send a prompt to Gemini CLI and get response"""
     try:
         # Set up environment with API key
@@ -82,15 +216,52 @@ def send_to_gemini(prompt, api_key=None):
             # No API key available
             return {"error": "API key required. Please configure API key first using /gemini/configure endpoint."}
         
-        # Use gemini CLI with proper -p flag for prompt
-        result = subprocess.run(
-            ['gemini', '-p', prompt],
-            capture_output=True,
-            text=True,
-            timeout=120,  # 2 minute timeout
-            check=False,
-            env=env
-        )
+        # Handle interactive mode for file operations and git commands
+        if interactive:
+            # For interactive commands in Docker, we still need to capture output
+            # but we can add flags to auto-accept common prompts
+            try:
+                # Use YOLO mode (-y) to automatically accept all actions
+                result = subprocess.run(
+                    ['gemini', '-p', prompt, '-y'],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                    env=env
+                )
+                
+                # If YOLO mode fails, try standard mode with auto-input
+                if result.returncode != 0 and 'Unknown arguments' in result.stderr:
+                    result = subprocess.run(
+                        ['gemini', '-p', prompt],
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        check=False,
+                        env=env,
+                        input='\n'.join(['1', 'yes', 'y', 'continue', ''])  # Auto-answer common prompts
+                    )
+                
+                return {
+                    "response": result.stdout.strip() if result.stdout else "Command completed",
+                    "stderr": result.stderr.strip() if result.stderr else "",
+                    "returncode": result.returncode,
+                    "interactive": True
+                }
+                
+            except Exception as e:
+                return {"error": f"Interactive command failed: {str(e)}", "interactive": True}
+        else:
+            # Use gemini CLI with proper -p flag for prompt (non-interactive)
+            result = subprocess.run(
+                ['gemini', '-p', prompt],
+                capture_output=True,
+                text=True,
+                timeout=120,  # 2 minute timeout
+                check=False,
+                env=env
+            )
         
         if result.returncode == 0:
             response = result.stdout.strip()
@@ -116,26 +287,117 @@ def send_to_gemini(prompt, api_key=None):
         return {"error": str(e)}
 
 @app.route('/gemini', methods=['POST'])
+def gemini():
+    """Send a prompt to Gemini CLI (backward compatibility endpoint)"""
+    data = request.get_json()
+    if not data or 'prompt' not in data:
+        return jsonify({"error": "Invalid request. 'prompt' field is required."}), 400
+    
+    prompt = data['prompt']
+    api_key = data.get('api_key')  # Optional API key override
+    interactive = data.get('interactive', False)  # Support interactive mode
+    
+    # Send to Gemini CLI
+    result = send_to_gemini(prompt, api_key, interactive)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@app.route('/gemini/chat', methods=['POST'])
 def gemini_chat():
     """Send a prompt to Gemini CLI"""
-    try:
-        data = request.get_json()
-        if not data or 'prompt' not in data:
-            return jsonify({"error": "Missing 'prompt' in request"}), 400
-        
-        prompt = data['prompt']
-        api_key = data.get('api_key')  # Optional API key in request
-        
-        result = send_to_gemini(prompt, api_key)
-        
-        if "error" in result:
-            return jsonify(result), 500
-        
-        return jsonify(result)
+    data = request.get_json()
+    if not data or 'prompt' not in data:
+        return jsonify({"error": "Invalid request. 'prompt' field is required."}), 400
     
-    except Exception as e:
-        logging.error(f"Error in gemini_chat: {e}")
-        return jsonify({"error": str(e)}), 500
+    prompt = data['prompt']
+    api_key = data.get('api_key')  # Optional API key override
+    interactive = data.get('interactive', False)  # Support interactive mode
+    
+    # Send to Gemini CLI
+    result = send_to_gemini(prompt, api_key, interactive)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@app.route('/gemini/interactive', methods=['POST'])
+def gemini_interactive():
+    """Send an interactive prompt to Gemini CLI (for file operations, git commands, etc.)"""
+    data = request.get_json()
+    if not data or 'prompt' not in data:
+        return jsonify({"error": "Invalid request. 'prompt' field is required."}), 400
+    
+    prompt = data['prompt']
+    api_key = data.get('api_key')  # Optional API key override
+    
+    # Force interactive mode
+    result = send_to_gemini(prompt, api_key, interactive=True)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@app.route('/gemini/session', methods=['POST'])
+def gemini_session():
+    """Send a prompt to the persistent Gemini CLI session (maintains full chat history via Gemini CLI's internal memory)"""
+    data = request.get_json()
+    if not data or 'prompt' not in data:
+        return jsonify({"error": "Invalid request. 'prompt' field is required."}), 400
+    
+    prompt = data['prompt']
+    api_key = data.get('api_key')  # Optional API key override
+    
+    # Clean up dead session if any
+    cleanup_persistent_gemini_session()
+    
+    # Send prompt to the single persistent session (Gemini CLI maintains all context)
+    result = send_to_persistent_gemini_session(prompt)
+    
+    if "error" in result:
+        return jsonify(result), 500
+    else:
+        return jsonify(result)
+
+@app.route('/gemini/session/reset', methods=['POST'])
+def reset_gemini_session():
+    """Reset the persistent Gemini CLI session (starts fresh conversation)"""
+    global persistent_gemini_session
+    
+    if persistent_gemini_session:
+        try:
+            persistent_gemini_session['process'].terminate()
+        except:
+            pass
+        persistent_gemini_session = None
+        return jsonify({"message": "Persistent Gemini CLI session reset successfully"})
+    else:
+        return jsonify({"message": "No active session to reset"})
+
+@app.route('/gemini/session/status', methods=['GET'])
+def gemini_session_status():
+    """Get status of the persistent Gemini CLI session"""
+    global persistent_gemini_session
+    
+    cleanup_persistent_gemini_session()  # Clean up first
+    
+    if persistent_gemini_session:
+        return jsonify({
+            "active": True,
+            "created_at": persistent_gemini_session['created_at'],
+            "last_used": persistent_gemini_session['last_used'],
+            "alive": persistent_gemini_session['process'].poll() is None,
+            "context_managed_by": "gemini_cli_internal"
+        })
+    else:
+        return jsonify({
+            "active": False,
+            "context_managed_by": "gemini_cli_internal"
+        })
 
 @app.route('/gemini/configure', methods=['POST'])
 def configure_gemini():
@@ -179,28 +441,73 @@ def restart_gemini():
 
 @app.route('/execute', methods=['POST'])
 def execute_command():
-    """Execute general shell commands"""
+    """Execute general shell commands with persistent working directory"""
+    global current_working_directory
+    
     data = request.get_json()
     if not data or 'command' not in data:
         return jsonify({"error": "Invalid request. 'command' field is required."}), 400
 
-    command = data['command']
+    command = data['command'].strip()
+    
     try:
-        # Execute the command in the shell
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            check=False  # Do not raise exception for non-zero exit codes
-        )
-        return jsonify({
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode
-        })
+        # Handle cd command specially to update working directory
+        if command.startswith('cd '):
+            # Extract the target directory
+            target_dir = command[3:].strip()
+            
+            # Handle relative paths
+            if not os.path.isabs(target_dir):
+                target_dir = os.path.join(current_working_directory, target_dir)
+            
+            # Normalize the path
+            target_dir = os.path.normpath(target_dir)
+            
+            # Check if directory exists
+            if os.path.isdir(target_dir):
+                current_working_directory = target_dir
+                return jsonify({
+                    "stdout": f"Changed directory to: {current_working_directory}",
+                    "stderr": "",
+                    "returncode": 0,
+                    "cwd": current_working_directory
+                })
+            else:
+                return jsonify({
+                    "stdout": "",
+                    "stderr": f"cd: no such file or directory: {target_dir}",
+                    "returncode": 1,
+                    "cwd": current_working_directory
+                })
+        
+        # Handle pwd command
+        elif command == 'pwd':
+            return jsonify({
+                "stdout": current_working_directory,
+                "stderr": "",
+                "returncode": 0,
+                "cwd": current_working_directory
+            })
+        
+        # Execute other commands in the current working directory
+        else:
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=current_working_directory,
+                check=False  # Do not raise exception for non-zero exit codes
+            )
+            return jsonify({
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "returncode": result.returncode,
+                "cwd": current_working_directory
+            })
+            
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "cwd": current_working_directory}), 500
 
 # ==================== Git Integration Functions ====================
 
