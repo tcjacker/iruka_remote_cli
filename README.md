@@ -87,7 +87,13 @@ Frontend/Client → Main Service (Flask) → Agent Containers (Docker) → Gemin
 
 4. **Generate code with AI**
    ```bash
-   curl -X POST http://localhost:8081/environments/{env_id}/gemini \
+   # Using basic Gemini endpoint
+   curl -X POST http://localhost:8081/environments/{env_id}/gemini/chat \
+     -H "Content-Type: application/json" \
+     -d '{"prompt": "Write a Python function to calculate fibonacci numbers"}'
+   
+   # Using persistent session (maintains conversation history)
+   curl -X POST http://localhost:8081/environments/{env_id}/gemini/session \
      -H "Content-Type: application/json" \
      -d '{"prompt": "Write a Python function to calculate fibonacci numbers"}'
    ```
@@ -126,6 +132,29 @@ Run the comprehensive demo to see all features:
 python demos/demo_final_showcase.py
 ```
 
+### Advanced Features
+
+#### Persistent Gemini Sessions
+The system supports persistent Gemini CLI sessions that maintain conversation history:
+
+```bash
+# Check session status
+curl -X GET http://localhost:8081/environments/{env_id}/gemini/session/status
+
+# Send message to persistent session
+curl -X POST http://localhost:8081/environments/{env_id}/gemini/session \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Remember this: I am working on a Python calculator project"}'
+
+# Continue conversation with context
+curl -X POST http://localhost:8081/environments/{env_id}/gemini/session \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Add error handling to the calculator we discussed"}'
+
+# Reset session (clear history)
+curl -X POST http://localhost:8081/environments/{env_id}/gemini/session/reset
+```
+
 ## 🔧 API Reference
 
 ### Environment Management
@@ -134,24 +163,44 @@ python demos/demo_final_showcase.py
 - `GET /health` - Health check
 
 ### Gemini AI Integration
+
+#### Basic AI Operations
 - `POST /environments/{id}/gemini/configure` - Configure API key
-- `POST /environments/{id}/gemini` - Generate code with AI
+- `POST /environments/{id}/gemini` - Generate code with AI (backward compatibility)
+- `POST /environments/{id}/gemini/chat` - Send prompt to Gemini CLI
+- `POST /environments/{id}/gemini/interactive` - Interactive prompt for file operations
+- `POST /environments/{id}/gemini/status` - Check Gemini CLI status
+- `POST /environments/{id}/gemini/restart` - Restart Gemini CLI
+
+#### Persistent Session Management
+- `POST /environments/{id}/gemini/session` - Send prompt to persistent session
+- `GET /environments/{id}/gemini/session/status` - Get session status
+- `POST /environments/{id}/gemini/session/reset` - Reset persistent session
+- `DELETE /environments/{id}/gemini/sessions/{session_id}` - Delete specific session
+- `GET /environments/{id}/gemini/sessions` - List all active sessions
 
 ### Git Operations
 - `POST /environments/{id}/git/clone` - Clone repository
+  - Body: `{"repo_url": "https://github.com/user/repo.git", "target_dir": "./workspace"}`
 - `GET /environments/{id}/git/status` - Check Git status
 - `POST /environments/{id}/git/add` - Add files to staging
+  - Body: `{"files": ["."]}` or `{"files": ["file1.py", "file2.py"]}`
 - `POST /environments/{id}/git/commit` - Commit changes
+  - Body: `{"message": "Commit message"}`
 - `POST /environments/{id}/git/push` - Push to remote
 - `POST /environments/{id}/git/pull` - Pull from remote
 
 ### File System Operations
-- `GET /environments/{id}/files/list` - List files
+- `GET /environments/{id}/files/list` - List files in workspace
+  - Query params: `?dir=./workspace` (optional)
 - `GET /environments/{id}/files/read` - Read file content
+  - Query params: `?path=filename.py&dir=./workspace`
 - `POST /environments/{id}/files/write` - Write file content
+  - Body: `{"path": "filename.py", "content": "file content", "dir": "./workspace"}`
 
 ### Code Execution
 - `POST /environments/{id}/execute` - Execute shell commands
+  - Body: `{"command": "python script.py"}`
 
 ## 🛡️ Security Features
 
@@ -179,6 +228,8 @@ The system is optimized for fast startup:
 - **Container startup**: ~8 seconds (optimized from 60-90 seconds)
 - **Complete AI workflow**: ~25 seconds (create → code → commit → execute)
 - **Concurrent environments**: Supports multiple isolated environments
+- **Gemini CLI authentication**: Fully automated with environment variables
+- **Persistent sessions**: Maintains conversation context across multiple requests
 
 ## 🤝 Contributing
 
