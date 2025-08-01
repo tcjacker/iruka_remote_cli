@@ -4,6 +4,7 @@ import uuid
 import requests
 import time
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import logging
 import os
 import json
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 # --- Flask App and Docker Client Initialization ---
 app = Flask(__name__)
+
+# Enable CORS for all routes
+CORS(app, origins=['http://localhost:8080', 'http://127.0.0.1:8080'])
 try:
     # Use the low-level APIClient with the configured socket path
     client = APIClient(base_url=config.DOCKER_SOCKET_PATH, user_agent='Docker-Py-Stable')
@@ -574,6 +578,70 @@ def reset_gemini_session_in_environment(env_id):
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to reset Gemini session in env {env_id}: {e}")
         return jsonify({"error": f"Failed to reset session: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/interactive', methods=['POST'])
+def start_interactive_gemini_session_in_environment(env_id):
+    """Start an interactive Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    try:
+        logger.info(f"Starting interactive Gemini CLI session in env {env_id}")
+        agent_url = f"http://127.0.0.1:{port}/environments/{env_id}/gemini/interactive"
+        response = requests.post(agent_url, timeout=30)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to start interactive Gemini session in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to start interactive session: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/interactive/input', methods=['POST'])
+def send_interactive_input_in_environment(env_id):
+    """Send input to an interactive Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+    data = request.get_json()
+
+    try:
+        logger.info(f"Sending input to interactive Gemini CLI session in env {env_id}")
+        agent_url = f"http://127.0.0.1:{port}/environments/{env_id}/gemini/interactive/input"
+        response = requests.post(agent_url, json=data, timeout=60)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to send input to interactive Gemini session in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to send input: {str(e)}"}), 502
+
+
+@app.route('/environments/<string:env_id>/gemini/interactive/output', methods=['GET'])
+def get_interactive_output_in_environment(env_id):
+    """Get output from an interactive Gemini CLI session within a specified agent environment."""
+    if env_id not in environments:
+        return jsonify({"error": "Environment not found."}), 404
+
+    env_details = environments[env_id]
+    port = env_details['port']
+
+    try:
+        logger.info(f"Getting output from interactive Gemini CLI session in env {env_id}")
+        agent_url = f"http://127.0.0.1:{port}/environments/{env_id}/gemini/interactive/output"
+        response = requests.get(agent_url, timeout=30)
+        response.raise_for_status()
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to get output from interactive Gemini session in env {env_id}: {e}")
+        return jsonify({"error": f"Failed to get output: {str(e)}"}), 502
 
 
 @app.route('/health', methods=['GET'])
