@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Gemini CLI 交互式会话</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .terminal-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #0d1117;
+        }
+
+        .terminal-header {
+            background: #21262d;
+            padding: 10px 15px;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .terminal-title {
+            color: #58a6ff;
+            font-weight: bold;
+        }
+
+        .terminal-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .control-btn:hover {
+            background: #2ea043;
+        }
+
+        .control-btn.danger {
+            background: #da3633;
+        }
+
+        .control-btn.danger:hover {
+            background: #f85149;
+        }
+
+        .terminal-output {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .terminal-input-container {
+            background: #21262d;
+            border-top: 1px solid #30363d;
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .terminal-prompt {
+            color: #58a6ff;
+            font-weight: bold;
+        }
+
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #c9d1d9;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            padding: 5px;
+        }
+
+        .send-btn {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .send-btn:hover {
+            background: #2ea043;
+        }
+
+        .send-btn:disabled {
+            background: #6e7681;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            color: #f0883e;
+        }
+
+        .error {
+            color: #f85149;
+        }
+
+        .success {
+            color: #56d364;
+        }
+
+        .cli-output {
+            color: #c9d1d9;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .user-input {
+            color: #58a6ff;
+            margin: 10px 0 5px 0;
+        }
+
+        .user-input::before {
+            content: "$ ";
+            color: #56d364;
+            font-weight: bold;
+        }
+
+        .status-bar {
+            background: #161b22;
+            padding: 5px 15px;
+            font-size: 12px;
+            color: #8b949e;
+            border-top: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #56d364;
+        }
+
+        .status-dot.error {
+            background: #f85149;
+        }
+
+        .status-dot.warning {
+            background: #f0883e;
+        }
+
+        /* 滚动条样式 */
+        .terminal-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal-output::-webkit-scrollbar-track {
+            background: #0d1117;
+        }
+
+        .terminal-output::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+
+        .terminal-output::-webkit-scrollbar-thumb:hover {
+            background: #484f58;
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <div class="terminal-title">
+                <i class="fas fa-terminal"></i> Gemini CLI 交互式会话
+            </div>
+            <div class="terminal-controls">
+                <button class="control-btn" id="clearBtn">
+                    <i class="fas fa-trash"></i> 清空
+                </button>
+                <button class="control-btn danger" id="closeBtn">
+                    <i class="fas fa-times"></i> 关闭
+                </button>
+            </div>
+        </div>
+
+        <div class="terminal-output" id="terminalOutput">
+            <div class="loading">正在启动 Gemini CLI 交互式会话...</div>
+        </div>
+
+        <div class="terminal-input-container">
+            <span class="terminal-prompt">gemini></span>
+            <input type="text" class="terminal-input" id="terminalInput" placeholder="等待会话启动..." disabled>
+            <button class="send-btn" id="sendBtn" disabled>
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+            <div id="sessionInfo">会话ID: 未知</div>
+        </div>
+    </div>
+
+    <script>
+        class InteractiveCLI {
+            constructor() {
+                this.apiBase = 'http://localhost:8081';
+                this.envId = new URLSearchParams(window.location.search).get('env') || 'default';
+                this.sessionActive = false;
+                this.isWaiting = false;
+                
+                this.elements = {
+                    output: document.getElementById('terminalOutput'),
+                    input: document.getElementById('terminalInput'),
+                    sendBtn: document.getElementById('sendBtn'),
+                    clearBtn: document.getElementById('clearBtn'),
+                    closeBtn: document.getElementById('closeBtn'),
+                    statusDot: document.getElementById('statusDot'),
+                    statusText: document.getElementById('statusText'),
+                    sessionInfo: document.getElementById('sessionInfo')
+                };
+                
+                this.init();
+            }
+            
+            async init() {
+                this.bindEvents();
+                await this.startSession();
+            }
+            
+            bindEvents() {
+                this.elements.sendBtn.addEventListener('click', () => this.sendInput());
+                this.elements.input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendInput();
+                    }
+                });
+                this.elements.clearBtn.addEventListener('click', () => this.clearOutput());
+                this.elements.closeBtn.addEventListener('click', () => this.closeSession());
+            }
+            
+            async startSession() {
+                try {
+                    this.updateStatus('warning', '启动会话中...');
+                    
+                    // 启动交互式会话
+                    const response = await fetch(`${this.apiBase}/environments/${this.envId}/gemini/interactive`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    if (result.error) {
+                        throw new Error(result.error);
+                    }
+                    
+                    // 获取初始输出
+                    await this.getInitialOutput();
+                    
+                    this.sessionActive = true;
+                    this.updateStatus('success', '会话已连接');
+                    this.elements.input.disabled = false;
+                    this.elements.input.placeholder = '输入命令或选择选项...';
+                    this.elements.sendBtn.disabled = false;
+                    this.elements.sessionInfo.textContent = `会话ID: ${this.envId}`;
+                    
+                } catch (error) {
+                    this.updateStatus('error', `启动失败: ${error.message}`);
+                    this.appendOutput(`错误: ${error.message}`, 'error');
+                }
+            }
+            
+            async getInitialOutput() {
+                try {
+                    const response = await fetch(`${this.apiBase}/environments/${this.envId}/gemini/interactive/output`);
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.output) {
+                            this.clearOutput();
+                            this.appendOutput(result.output, 'cli-output');
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取初始输出失败:', error);
+                }
+            }
+            
+            async sendInput() {
+                if (!this.sessionActive || this.isWaiting) return;
+                
+                const input = this.elements.input.value.trim();
+                if (!input) return;
+                
+                try {
+                    this.isWaiting = true;
+                    this.elements.input.disabled = true;
+                    this.elements.sendBtn.disabled = true;
+                    this.updateStatus('warning', '发送中...');
+                    
+                    // 显示用户输入
+                    this.appendOutput(input, 'user-input');
+                    this.elements.input.value = '';
+                    
+                    // 发送到后端
+                    const response = await fetch(`${this.apiBase}/environments/${this.envId}/gemini/interactive/input`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ input, timeout: 30 })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    if (result.error) {
+                        throw new Error(result.error);
+                    }
+                    
+                    // 显示响应
+                    if (result.response) {
+                        this.appendOutput(result.response, 'cli-output');
+                    }
+                    
+                    this.updateStatus('success', '会话已连接');
+                    
+                } catch (error) {
+                    this.updateStatus('error', `发送失败: ${error.message}`);
+                    this.appendOutput(`错误: ${error.message}`, 'error');
+                } finally {
+                    this.isWaiting = false;
+                    this.elements.input.disabled = false;
+                    this.elements.sendBtn.disabled = false;
+                    this.elements.input.focus();
+                }
+            }
+            
+            appendOutput(text, className = '') {
+                const div = document.createElement('div');
+                div.textContent = text;
+                if (className) {
+                    div.className = className;
+                }
+                this.elements.output.appendChild(div);
+                this.elements.output.scrollTop = this.elements.output.scrollHeight;
+            }
+            
+            clearOutput() {
+                this.elements.output.innerHTML = '';
+            }
+            
+            updateStatus(type, message) {
+                this.elements.statusDot.className = `status-dot ${type}`;
+                this.elements.statusText.textContent = message;
+            }
+            
+            closeSession() {
+                if (confirm('确定要关闭交互式会话吗？')) {
+                    window.close();
+                }
+            }
+        }
+        
+        // 启动交互式 CLI
+        new InteractiveCLI();
+    </script>
+</body>
+</html>

@@ -21,7 +21,7 @@ class Config:
     
     # Docker configuration
     DOCKER_SOCKET_PATH: str = os.getenv('DOCKER_SOCKET_PATH', 'unix:///var/run/docker.sock')
-    AGENT_IMAGE_TAG: str = os.getenv('AGENT_IMAGE_TAG', 'agent-service:latest')
+    AGENT_IMAGE_TAG: str = os.getenv('AGENT_IMAGE_TAG', 'iruka-agent:latest')
     AGENT_INTERNAL_PORT: str = os.getenv('AGENT_INTERNAL_PORT', '5000')
     
     # Gemini API configuration
