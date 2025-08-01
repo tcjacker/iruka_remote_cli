@@ -1,10 +1,12 @@
+import os
 import subprocess
 import json
-import os
 import time
 import select
-from flask import Flask, request, jsonify
 import logging
+import pty
+import fcntl
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -75,6 +77,49 @@ def get_configured_api_key():
         logging.error(f"Failed to read API key from settings: {e}")
     return None
 
+def test_gemini_authentication(api_key=None):
+    """Test Gemini CLI authentication with the provided API key"""
+    if not api_key:
+        api_key = get_configured_api_key()
+    
+    if not api_key:
+        logging.error("No API key available for authentication test")
+        return False
+    
+    try:
+        # Set up environment for testing
+        env = os.environ.copy()
+        env['GEMINI_API_KEY'] = api_key.strip()
+        env['GEMINI_DEFAULT_AUTH_TYPE'] = 'gemini-api-key'
+        env['GOOGLE_GENAI_USE_GEMINI'] = 'true'
+        env['GEMINI_DISABLE_AUTH_PROMPT'] = 'true'
+        env['GEMINI_NON_INTERACTIVE'] = 'true'
+        
+        # Test with a simple version command
+        logging.info("Testing Gemini CLI authentication...")
+        result = subprocess.run(
+            ['gemini', '--version'],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            logging.info("✅ Gemini CLI authentication test passed")
+            return True
+        else:
+            logging.error(f"❌ Gemini CLI authentication test failed. Return code: {result.returncode}")
+            logging.error(f"Error output: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        logging.error("❌ Gemini CLI authentication test timed out")
+        return False
+    except Exception as e:
+        logging.error(f"❌ Gemini CLI authentication test failed with exception: {e}")
+        return False
+
 def get_or_create_persistent_gemini_session(api_key=None):
     """Get or create the single persistent Gemini CLI session for this container"""
     global persistent_gemini_session
@@ -97,36 +142,99 @@ def get_or_create_persistent_gemini_session(api_key=None):
             logging.info("No API key provided, trying to get configured API key")
             api_key = get_configured_api_key()
         
-        if api_key:
-            logging.info("API key available, setting GEMINI_API_KEY environment variable")
-            env['GEMINI_API_KEY'] = api_key
-        else:
+        if not api_key:
             logging.error("No API key available - cannot create Gemini session")
+            logging.error("Please set GEMINI_API_KEY environment variable or configure via /configure endpoint")
             return None
         
-        # Start Gemini CLI in interactive mode (this maintains all context internally)
+        # 验证 API key 格式
+        if not api_key.strip():
+            logging.error("API key is empty or contains only whitespace")
+            return None
+        
+        # 首先测试认证是否正常工作
+        logging.info("Testing authentication before creating persistent session...")
+        if not test_gemini_authentication(api_key):
+            logging.error("Authentication test failed, cannot create persistent session")
+            return None
+        
+        logging.info("API key available, setting up environment for automatic authentication")
+        # 设置完整的环境变量以确保自动认证
+        env['GEMINI_API_KEY'] = api_key.strip()
+        # 强制指定默认认证类型为 gemini-api-key (API key)
+        env['GEMINI_DEFAULT_AUTH_TYPE'] = 'gemini-api-key'
+        # 确保非交互模式下使用API密钥
+        env['GOOGLE_GENAI_USE_GEMINI'] = 'true'
+        # 禁用交互式认证提示
+        env['GEMINI_DISABLE_AUTH_PROMPT'] = 'true'
+        # 设置非交互模式
+        env['GEMINI_NON_INTERACTIVE'] = 'true'
+        
+        # Start Gemini CLI using pty for better TTY compatibility
         logging.info(f"Starting Gemini CLI process in directory: {current_working_directory}")
+        logging.info("Environment variables set for automatic authentication:")
+        logging.info(f"  GEMINI_API_KEY: {'***' if env.get('GEMINI_API_KEY') else 'Not set'}")
+        logging.info(f"  GEMINI_DEFAULT_AUTH_TYPE: {env.get('GEMINI_DEFAULT_AUTH_TYPE', 'Not set')}")
+        logging.info(f"  GOOGLE_GENAI_USE_GEMINI: {env.get('GOOGLE_GENAI_USE_GEMINI', 'Not set')}")
+        
+        # Use pty to create a pseudo-terminal for better Gemini CLI interaction
+        master_fd, slave_fd = pty.openpty()
+        
         process = subprocess.Popen(
-            ['gemini'],  # No -p flag = interactive mode with full context memory
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=0,  # Unbuffered for real-time interaction
+            ['gemini'],  # Interactive mode with TTY
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
             env=env,
-            cwd=current_working_directory
+            cwd=current_working_directory,
+            preexec_fn=os.setsid  # Create new session
         )
         
-        # Wait a moment to see if process starts successfully
-        time.sleep(0.5)
+        # Close slave fd in parent process
+        os.close(slave_fd)
+        
+        # Make master fd non-blocking
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, os.O_NONBLOCK)
+        
+        # Wait for Gemini CLI to initialize
+        logging.info("Waiting for Gemini CLI to initialize with automatic authentication...")
+        time.sleep(2.0)  # Give time for Gemini CLI to initialize
+        
+        # Check if process started successfully
         if process.poll() is not None:
-            # Process has already terminated
-            stderr_output = process.stderr.read() if process.stderr else "No stderr"
-            logging.error(f"Gemini CLI process terminated immediately. Return code: {process.returncode}, stderr: {stderr_output}")
+            logging.error(f"Gemini CLI process terminated immediately. Return code: {process.returncode}")
+            # Try to read any error output
+            try:
+                if select.select([master_fd], [], [], 0.1)[0]:
+                    error_output = os.read(master_fd, 4096).decode('utf-8', errors='ignore')
+                    logging.error(f"Gemini CLI error output: {error_output}")
+            except:
+                pass
+            os.close(master_fd)
             return None
+        
+        # With proper environment variables, Gemini CLI should authenticate automatically
+        # Wait a bit more to ensure authentication completes
+        time.sleep(3.0)
+        
+        # Verify the process is still running after authentication
+        if process.poll() is not None:
+            logging.error(f"Gemini CLI process died after initialization. Return code: {process.returncode}")
+            # Try to read any error output
+            try:
+                if select.select([master_fd], [], [], 0.1)[0]:
+                    error_output = os.read(master_fd, 4096).decode('utf-8', errors='ignore')
+                    logging.error(f"Gemini CLI error output: {error_output}")
+            except:
+                pass
+            os.close(master_fd)
+            return None
+        
+        logging.info("Gemini CLI session created successfully with automatic authentication")
         
         persistent_gemini_session = {
             'process': process,
+            'master_fd': master_fd,
             'created_at': time.time(),
             'last_used': time.time()
         }
@@ -140,46 +248,91 @@ def get_or_create_persistent_gemini_session(api_key=None):
         logging.error(f"Traceback: {traceback.format_exc()}")
         return None
 
-def send_to_persistent_gemini_session(prompt, timeout=120):
+def send_to_persistent_gemini_session(prompt, api_key=None, timeout=120):
     """Send a prompt to the persistent Gemini CLI session"""
     global persistent_gemini_session
     
     # Get or create the persistent session
-    session = get_or_create_persistent_gemini_session()
+    session = get_or_create_persistent_gemini_session(api_key)
     if not session:
         return {"error": "Failed to create Gemini CLI session. Please check API key."}
     
     try:
         process = session['process']
+        master_fd = session['master_fd']
         session['last_used'] = time.time()
         
-        # Send prompt to the Gemini CLI process (it maintains all context internally)
-        process.stdin.write(prompt + '\n')
-        process.stdin.flush()
+        logging.info(f"Sending prompt to Gemini CLI (PID: {process.pid}): {prompt[:50]}...")
+        
+        # Check if process is still alive before sending
+        if process.poll() is not None:
+            logging.error(f"Gemini CLI process (PID: {process.pid}) has died with return code: {process.returncode}")
+            return {"error": "Gemini CLI process has died"}
+        
+        # Send prompt to the Gemini CLI process via pty (it maintains all context internally)
+        try:
+            prompt_bytes = (prompt + '\n').encode('utf-8')
+            os.write(master_fd, prompt_bytes)
+            logging.info("Prompt sent to Gemini CLI via pty, waiting for response...")
+        except Exception as e:
+            logging.error(f"Failed to send prompt to Gemini CLI: {e}")
+            return {"error": f"Failed to send prompt: {str(e)}"}
         
         # Read response with timeout
         start_time = time.time()
         response_lines = []
+        lines_read = 0
         
         while time.time() - start_time < timeout:
-            # Check if there's data to read
-            if select.select([process.stdout], [], [], 1.0)[0]:
-                line = process.stdout.readline()
-                if line:
-                    response_lines.append(line.rstrip())
-                    # Look for prompt indicators to know when response is complete
-                    if line.strip().endswith('> ') or line.strip().endswith('$ ') or 'gemini>' in line.lower():
-                        break
+            # Check if there's data to read from pty
+            if select.select([master_fd], [], [], 1.0)[0]:
+                try:
+                    data = os.read(master_fd, 4096).decode('utf-8', errors='ignore')
+                    if data:
+                        # Split data into lines and process
+                        new_lines = data.split('\n')
+                        for i, line in enumerate(new_lines):
+                            if line.strip():  # Skip empty lines
+                                lines_read += 1
+                                response_lines.append(line.rstrip())
+                                logging.info(f"Read line {lines_read}: {line.rstrip()[:100]}...")
+                        
+                        # Look for completion patterns in the data
+                        if any('How can I help' in line for line in new_lines) or \
+                           any(line.strip().endswith(('>', '$')) for line in new_lines):
+                            logging.info("Found completion pattern, response complete")
+                            break
+                        
+                        # If we got substantial response, wait a bit more then check
+                        if lines_read > 0 and len(data.strip()) > 10:
+                            time.sleep(0.5)
+                            # Check if there's more data immediately available
+                            if not select.select([master_fd], [], [], 0.1)[0]:
+                                logging.info("No immediate additional data, response likely complete")
+                                break
+                except Exception as e:
+                    logging.error(f"Error reading from Gemini CLI pty: {e}")
+                    break
             else:
                 # Check if process is still alive
                 if process.poll() is not None:
+                    logging.error(f"Gemini CLI process died during communication: {process.returncode}")
+                    break
+                
+                # If we have some response and no new data for a while, consider it complete
+                if response_lines and time.time() - start_time > 5:
+                    logging.info(f"Timeout reached with {len(response_lines)} lines, considering response complete")
                     break
         
         response = '\n'.join(response_lines)
+        logging.info(f"Final response ({len(response_lines)} lines, {len(response)} chars): {response[:200]}...")
+        
         return {
             "response": response,
             "persistent": True,
-            "context_maintained_by": "gemini_cli_internal"
+            "context_maintained_by": "gemini_cli_internal",
+            "lines_read": lines_read,
+            "process_pid": process.pid
         }
         
     except Exception as e:
@@ -356,7 +509,7 @@ def gemini_session():
     cleanup_persistent_gemini_session()
     
     # Send prompt to the single persistent session (Gemini CLI maintains all context)
-    result = send_to_persistent_gemini_session(prompt)
+    result = send_to_persistent_gemini_session(prompt, api_key)
     
     if "error" in result:
         return jsonify(result), 500
