@@ -39,6 +39,9 @@ lerna-debug.log*
 Thumbs.db
 ._*
 
+# Project data
+backend/data/projects.json
+
 # Logs
 logs/
 *.log
