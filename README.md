@@ -1,272 +1,118 @@
-# 🚀 Gemini CLI Docker Git Integration
+# Iruka Remote
 
-A high-performance, containerized AI-assisted development system that integrates Google's Gemini AI with Git workflows in isolated Docker environments.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-## ✨ Features
+A web-based UI for creating and managing isolated, Gemini-powered development environments within Docker containers. This tool is designed to streamline your AI-driven development workflow, allowing you to spin up fresh, clean coding environments tied to your Git repositories in seconds.
 
-- **⚡ Ultra-fast startup**: Optimized Docker containers with pre-installed Gemini CLI (8s vs 60-90s)
-- **🤖 AI-powered coding**: Generate, modify, and execute code using Google Gemini
-- **🔄 Complete Git integration**: Clone, commit, push, and manage repositories
-- **🛡️ Secure isolation**: Each environment runs in its own Docker container
-- **📡 RESTful API**: Full HTTP API for all operations
-- **🔧 Multi-environment**: Support for concurrent isolated development environments
+Each environment comes pre-configured with Git, Node.js, and the Gemini CLI, enabling you to go from a Git branch to a fully interactive AI coding session with just a few clicks.
 
-## 🏗️ Architecture
+## Core Features
 
-```
-Frontend/Client → Main Service (Flask) → Agent Containers (Docker) → Gemini CLI + Git
-```
+- **Project-Based Management**: Organize your work into projects, each linked to a Git repository.
+- **Isolated Docker Environments**: Create multiple, independent development environments (Docker containers) within each project.
+- **Flexible Branching Strategy**:
+    - Spin up an environment from an **existing remote branch** to fix a bug or collaborate on a feature.
+    - Spin up an environment by creating a **new local and remote branch**, perfect for starting new features.
+- **Automated Environment Setup**: Each new environment automatically:
+    1.  Clones the project's Git repository.
+    2.  Checks out the specified branch or creates a new one.
+    3.  Pushes the new branch to the remote to enable immediate collaboration.
+    4.  Comes pre-installed with `git`, `nodejs`, `npm`, and `@google/gemini-cli`.
+- **Integrated Web Terminal**: A fully interactive `xterm.js` terminal in your browser, connected directly to the environment's shell.
+- **Seamless Gemini CLI Integration**: Click on a running environment to be dropped directly into the Gemini CLI TUI, ready for AI-powered development.
+- **Centralized Configuration**: Manage your Git and Gemini API tokens at the project level for secure and convenient access.
 
-- **Main Service** (`main_service.py`): Central API gateway and environment manager
-- **Agent Containers**: Isolated Docker environments with Gemini CLI and Git
-- **RESTful API**: Complete HTTP API for all operations
+## Technology Stack
 
-## 🚀 Quick Start
+- **Frontend**:
+    - **Framework**: React (with Vite)
+    - **UI Library**: Material-UI
+    - **Terminal**: Xterm.js
+- **Backend**:
+    - **Framework**: Python 3 with FastAPI
+    - **Docker Interaction**: `docker-py`
+    - **Real-time Communication**: WebSockets
+    - **WSGI Server**: Uvicorn
+- **Core Automation**:
+    - Docker containerization
+    - Shell scripting for environment provisioning
+
+## Getting Started
 
 ### Prerequisites
 
-- Docker
-- Python 3.8+
-- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
+- **Docker**: The Docker daemon must be running on the machine where you run the backend.
+- **Python**: Python 3.10+ with `venv`.
+- **Node.js**: Node.js 20+ with `npm`.
+- **A Git repository** with a `Dockerfile` (a simple `ubuntu:latest` or `python:latest` base is a good start).
 
-### Installation
+### Installation & Launch
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd auto_cli
-   ```
+You will need two separate terminal sessions to run the backend and frontend servers.
 
-2. **Set up Python environment**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your Gemini API key
-   ```
-
-4. **Build Docker image**
-   ```bash
-   cd core/agent
-   docker build -t agent-service:latest .
-   cd ../..
-   ```
-
-5. **Start the main service**
-   ```bash
-   python main.py
-   ```
-
-## 📖 Usage
-
-### Basic Workflow
-
-1. **Create an environment**
-   ```bash
-   curl -X POST http://localhost:8081/environments
-   ```
-
-2. **Configure Gemini API key**
-   ```bash
-   curl -X POST http://localhost:8081/environments/{env_id}/gemini/configure \
-     -H "Content-Type: application/json" \
-     -d '{"api_key": "your_api_key"}'
-   ```
-
-3. **Clone a repository**
-   ```bash
-   curl -X POST http://localhost:8081/environments/{env_id}/git/clone \
-     -H "Content-Type: application/json" \
-     -d '{"repo_url": "https://github.com/user/repo.git", "target_dir": "./workspace"}'
-   ```
-
-4. **Generate code with AI**
-   ```bash
-   # Using basic Gemini endpoint
-   curl -X POST http://localhost:8081/environments/{env_id}/gemini/chat \
-     -H "Content-Type: application/json" \
-     -d '{"prompt": "Write a Python function to calculate fibonacci numbers"}'
-   
-   # Using persistent session (maintains conversation history)
-   curl -X POST http://localhost:8081/environments/{env_id}/gemini/session \
-     -H "Content-Type: application/json" \
-     -d '{"prompt": "Write a Python function to calculate fibonacci numbers"}'
-   ```
-
-5. **Write and execute code**
-   ```bash
-   # Write file
-   curl -X POST http://localhost:8081/environments/{env_id}/files/write \
-     -H "Content-Type: application/json" \
-     -d '{"path": "fibonacci.py", "content": "generated_code_here"}'
-   
-   # Execute code
-   curl -X POST http://localhost:8081/environments/{env_id}/execute \
-     -H "Content-Type: application/json" \
-     -d '{"command": "python fibonacci.py"}'
-   ```
-
-6. **Commit changes**
-   ```bash
-   # Add files
-   curl -X POST http://localhost:8081/environments/{env_id}/git/add \
-     -H "Content-Type: application/json" \
-     -d '{"files": ["."]}'
-   
-   # Commit
-   curl -X POST http://localhost:8081/environments/{env_id}/git/commit \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Add AI-generated fibonacci function"}'
-   ```
-
-### Demo Scripts
-
-Run the comprehensive demo to see all features:
+**1. Backend Server:**
 
 ```bash
-python demos/demo_final_showcase.py
+# Navigate to the backend directory
+cd gemini-docker-manager/backend
+
+# Create a Python virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+# venv\\Scripts\\activate
+
+# Install the required Python packages
+pip install -r requirements.txt
+
+# Run the FastAPI server
+uvicorn app.main:app --reload
 ```
+The backend will be running on `http://localhost:8000`.
 
-### Advanced Features
-
-#### Persistent Gemini Sessions
-The system supports persistent Gemini CLI sessions that maintain conversation history:
+**2. Frontend Server:**
 
 ```bash
-# Check session status
-curl -X GET http://localhost:8081/environments/{env_id}/gemini/session/status
+# Navigate to the frontend directory
+cd gemini-docker-manager/frontend
 
-# Send message to persistent session
-curl -X POST http://localhost:8081/environments/{env_id}/gemini/session \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Remember this: I am working on a Python calculator project"}'
+# Install the required npm packages
+npm install
 
-# Continue conversation with context
-curl -X POST http://localhost:8081/environments/{env_id}/gemini/session \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Add error handling to the calculator we discussed"}'
-
-# Reset session (clear history)
-curl -X POST http://localhost:8081/environments/{env_id}/gemini/session/reset
+# Run the Vite development server
+npm run dev
 ```
+The frontend will be accessible at `http://localhost:5173` (or the next available port).
 
-## 🔧 API Reference
+## How to Use
 
-### Environment Management
-- `POST /environments` - Create new environment
-- `DELETE /environments/{id}` - Delete environment
-- `GET /health` - Health check
+1.  **Create a Project**:
+    - Open the web UI in your browser.
+    - Click on "New Project".
+    - Fill in the project name and the **HTTPS URL** of your Git repository.
+    - Optionally, add your Git Personal Access Token (required for private repos) and your Gemini API Key.
+2.  **Open Project Workspace**:
+    - Select your newly created project from the dropdown menu in the top header.
+3.  **Manage Settings (Optional)**:
+    - In the workspace, you can expand the "Project Settings" area to add or update your Git and Gemini API tokens at any time.
+4.  **Create a New Environment**:
+    - In the left sidebar, click the "**+ New**" button.
+    - Give your environment a name (e.g., `feature-new-login`).
+    - Choose your branching strategy:
+        - **Create new branch**: A new branch named `feature/<your-env-name>` will be created locally and pushed to your remote repository.
+        - **Use existing branch**: Select a branch from the dropdown of all available remote branches.
+    - Select a base Docker image for the environment (e.g., `ubuntu:latest`).
+    - Click "Create".
+5.  **Connect to the Shell**:
+    - Wait for the environment's status to become "running". This may take a few minutes as it installs dependencies.
+    - Click on the running environment in the left sidebar.
+    - The terminal on the right will connect and drop you directly into the Gemini CLI, ready for you to start coding.
 
-### Gemini AI Integration
+## License
 
-#### Basic AI Operations
-- `POST /environments/{id}/gemini/configure` - Configure API key
-- `POST /environments/{id}/gemini` - Generate code with AI (backward compatibility)
-- `POST /environments/{id}/gemini/chat` - Send prompt to Gemini CLI
-- `POST /environments/{id}/gemini/interactive` - Interactive prompt for file operations
-- `POST /environments/{id}/gemini/status` - Check Gemini CLI status
-- `POST /environments/{id}/gemini/restart` - Restart Gemini CLI
+This project is licensed under the **GNU General Public License v3.0**.
 
-#### Persistent Session Management
-- `POST /environments/{id}/gemini/session` - Send prompt to persistent session
-- `GET /environments/{id}/gemini/session/status` - Get session status
-- `POST /environments/{id}/gemini/session/reset` - Reset persistent session
-- `DELETE /environments/{id}/gemini/sessions/{session_id}` - Delete specific session
-- `GET /environments/{id}/gemini/sessions` - List all active sessions
-
-### Git Operations
-- `POST /environments/{id}/git/clone` - Clone repository
-  - Body: `{"repo_url": "https://github.com/user/repo.git", "target_dir": "./workspace"}`
-- `GET /environments/{id}/git/status` - Check Git status
-- `POST /environments/{id}/git/add` - Add files to staging
-  - Body: `{"files": ["."]}` or `{"files": ["file1.py", "file2.py"]}`
-- `POST /environments/{id}/git/commit` - Commit changes
-  - Body: `{"message": "Commit message"}`
-- `POST /environments/{id}/git/push` - Push to remote
-- `POST /environments/{id}/git/pull` - Pull from remote
-
-### File System Operations
-- `GET /environments/{id}/files/list` - List files in workspace
-  - Query params: `?dir=./workspace` (optional)
-- `GET /environments/{id}/files/read` - Read file content
-  - Query params: `?path=filename.py&dir=./workspace`
-- `POST /environments/{id}/files/write` - Write file content
-  - Body: `{"path": "filename.py", "content": "file content", "dir": "./workspace"}`
-
-### Code Execution
-- `POST /environments/{id}/execute` - Execute shell commands
-  - Body: `{"command": "python script.py"}`
-
-## 🛡️ Security Features
-
-- **Container Isolation**: Each environment runs in isolated Docker containers
-- **Path Validation**: Prevents directory traversal attacks
-- **API Key Security**: Secure handling of Gemini API keys
-- **Workspace Isolation**: Each environment has its own workspace
-
-## 🔧 Configuration
-
-### Environment Variables
-
-See `.env.example` for all available configuration options.
-
-### Docker Optimization
-
-The system is optimized for fast startup:
-- Gemini CLI is pre-installed in the Docker image
-- Node.js 20+ for compatibility
-- Minimal startup script
-- Cached dependencies
-
-## 📊 Performance
-
-- **Container startup**: ~8 seconds (optimized from 60-90 seconds)
-- **Complete AI workflow**: ~25 seconds (create → code → commit → execute)
-- **Concurrent environments**: Supports multiple isolated environments
-- **Gemini CLI authentication**: Fully automated with environment variables
-- **Persistent sessions**: Maintains conversation context across multiple requests
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📝 License
-
-[Add your license here]
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-1. **Docker build fails**: Ensure Docker is running and you have sufficient disk space
-2. **Gemini API errors**: Verify your API key is valid and has sufficient quota
-3. **Port conflicts**: Change `MAIN_SERVICE_PORT` in `.env` if port 8081 is in use
-
-### Cleanup
-
-To stop all services and clean up containers:
-
-```bash
-./cleanup.sh
-```
-
-## 🔮 Future Enhancements
-
-- [ ] Web-based UI
-- [ ] Multiple AI provider support
-- [ ] Advanced Git workflow automation
-- [ ] Code review integration
-- [ ] Team collaboration features
-
----
-
-**Built with ❤️ for AI-assisted development**
+Permissions of this strong copyleft license are conditioned on making available complete source code of licensed works and modifications, which include larger works using a licensed work, under the same license. Copyright and license notices must be preserved. Contributors provide an express grant of patent rights. See the [LICENSE](LICENSE) file for full details.
