@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+docker
+python-multipart
+websockets
+aionotify
+GitPython
