@@ -54,7 +54,7 @@
 
 ```bash
 # 导航到后端目录
-cd gemini-docker-manager/backend
+cd ./backend
 
 # 创建Python虚拟环境
 python3 -m venv venv
@@ -77,7 +77,7 @@ uvicorn app.main:app --reload
 
 ```bash
 # 导航到前端目录
-cd gemini-docker-manager/frontend
+cd ./frontend
 
 # 安装所需的npm包
 npm install
