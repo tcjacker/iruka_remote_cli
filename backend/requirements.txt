@@ -1,7 +1,10 @@
 fastapi
-uvicorn[standard]
-docker
+uvicorn
 python-multipart
+docker
 websockets
+passlib[bcrypt]
+python-jose
+
 aionotify
 GitPython
