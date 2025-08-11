@@ -10,58 +10,54 @@ import {
   Box,
   Button,
 } from "@mui/material";
+import { useAuth } from "../context/AuthContext";
 
-function Header() {
+function Header({ onLogout }) {
   const [projects, setProjects] = useState([]);
   const [selectedValue, setSelectedValue] = useState("");
   const { projectName } = useParams();
   const navigate = useNavigate();
+  const { token } = useAuth(); // Get the auth token
 
-  // Effect 1: Fetch projects once on component mount
-  useEffect(() => {
-    fetch("http://localhost:8000/api/projects")
-      .then((res) => res.json())
-      .then((data) => {
-        setProjects(data);
+  const fetchProjects = () => {
+    if (!token) return; // Don't fetch if not logged in
+    fetch("http://localhost:8000/api/projects", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch projects");
+        return res.json();
       })
-      .catch((err) => console.error("Failed to fetch projects:", err));
-  }, []);
+      .then((data) => setProjects(data))
+      .catch((err) => console.error(err));
+  };
 
-  // Effect 2: 同步 URL 参数和选择状态
+  // Effect 1: Fetch projects when the component mounts or token changes
+  useEffect(() => {
+    fetchProjects();
+  }, [token]);
+
+  // Effect 2: Sync URL parameter with dropdown state
   useEffect(() => {
     if (projectName && projects.length > 0) {
-      // 检查 URL 中的项目名是否在项目列表中存在
       const projectExists = projects.some((p) => p.name === projectName);
-      if (projectExists) {
-        setSelectedValue(projectName);
-      } else {
-        setSelectedValue("");
-      }
+      setSelectedValue(projectExists ? projectName : "");
     } else if (!projectName) {
-      // 如果不在项目页面，重置选择
       setSelectedValue("");
     }
   }, [projectName, projects]);
 
   const handleProjectChange = (event) => {
     const newProjectName = event.target.value;
-    setSelectedValue(newProjectName); // 立即更新本地状态
-
-    if (newProjectName) {
-      navigate(`/project/${newProjectName}`);
-    } else {
-      navigate("/");
-    }
+    setSelectedValue(newProjectName);
+    navigate(newProjectName ? `/project/${newProjectName}` : "/");
   };
 
+  // handleOpen now just calls the reusable fetch function
   const handleOpen = () => {
-    // Fetch projects every time the dropdown is opened
-    fetch("http://localhost:8000/api/projects")
-      .then((res) => res.json())
-      .then((data) => {
-        setProjects(data);
-      })
-      .catch((err) => console.error("Failed to fetch projects:", err));
+    fetchProjects();
   };
 
   return (
@@ -76,14 +72,12 @@ function Header() {
 
         <FormControl sx={{ m: 1, minWidth: 200 }} size="small">
           <Select
-            value={selectedValue} // The Select's value is now reliably controlled by our state
+            value={selectedValue}
             onChange={handleProjectChange}
-            onOpen={handleOpen} // <-- This is the fix
+            onOpen={handleOpen}
             displayEmpty
             renderValue={(selected) => {
-              if (!selected) {
-                return <em>Select a Project</em>;
-              }
+              if (!selected) return <em>Select a Project</em>;
               return selected;
             }}
             inputProps={{ "aria-label": "Without label" }}
@@ -108,9 +102,13 @@ function Header() {
         <Button color="inherit" onClick={() => navigate("/")}>
           New Project
         </Button>
+        <Button color="inherit" onClick={onLogout}>
+          Logout
+        </Button>
       </Toolbar>
     </AppBar>
   );
 }
 
 export default Header;
+

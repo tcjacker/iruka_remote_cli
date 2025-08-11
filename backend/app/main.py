@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from . import api, websocket
+from .api import auth_router, api_router
+from . import websocket
 
 app = FastAPI()
 
@@ -13,7 +14,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api.router, prefix="/api")
+# Unprotected auth routes
+app.include_router(auth_router, prefix="/api") 
+# All other API routes are protected
+app.include_router(api_router, prefix="/api") 
+# WebSocket router
 app.include_router(websocket.router)
 
 @app.get("/")
