@@ -54,7 +54,7 @@ You will need two separate terminal sessions to run the backend and frontend ser
 
 ```bash
 # Navigate to the backend directory
-cd gemini-docker-manager/backend
+cd ./backend
 
 # Create a Python virtual environment
 python3 -m venv venv
@@ -77,7 +77,7 @@ The backend will be running on `http://localhost:8000`.
 
 ```bash
 # Navigate to the frontend directory
-cd gemini-docker-manager/frontend
+cd ./frontend
 
 # Install the required npm packages
 npm install
