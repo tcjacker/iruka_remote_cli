@@ -54,6 +54,16 @@ function Header() {
     }
   };
 
+  const handleOpen = () => {
+    // Fetch projects every time the dropdown is opened
+    fetch("http://localhost:8000/api/projects")
+      .then((res) => res.json())
+      .then((data) => {
+        setProjects(data);
+      })
+      .catch((err) => console.error("Failed to fetch projects:", err));
+  };
+
   return (
     <AppBar
       position="static"
@@ -68,7 +78,14 @@ function Header() {
           <Select
             value={selectedValue} // The Select's value is now reliably controlled by our state
             onChange={handleProjectChange}
+            onOpen={handleOpen} // <-- This is the fix
             displayEmpty
+            renderValue={(selected) => {
+              if (!selected) {
+                return <em>Select a Project</em>;
+              }
+              return selected;
+            }}
             inputProps={{ "aria-label": "Without label" }}
             sx={{
               color: "white",
@@ -81,9 +98,6 @@ function Header() {
               ".MuiSvgIcon-root": { color: "white" },
             }}
           >
-            <MenuItem value="">
-              <em>Select a Project</em>
-            </MenuItem>
             {projects.map((p) => (
               <MenuItem key={p.name} value={p.name}>
                 {p.name}
