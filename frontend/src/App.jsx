@@ -15,16 +15,13 @@ import Initialize from './pages/Initialize';
 import Register from './pages/Register';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-// --- Protected Route ---
+// --- Protected Route: Renders child routes if logged in, otherwise redirects to /login ---
 function ProtectedRoute() {
   const { token } = useAuth();
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
-  return <Outlet />;
+  return token ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
-// --- App Layout ---
+// --- App Layout: The main UI for authenticated users ---
 function AppLayout() {
   const { logout } = useAuth();
   return (
@@ -37,27 +34,9 @@ function AppLayout() {
   );
 }
 
-// --- Main App Component ---
+// --- App Component: Defines the application's routes ---
 function App() {
-  const [needsInitialization, setNeedsInitialization] = useState(false);
-  const [authStatusChecked, setAuthStatusChecked] = useState(false);
-  const { token, setToken } = useAuth();
-
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/auth/status');
-        if (!response.ok) throw new Error('Could not connect to backend.');
-        const data = await response.json();
-        setNeedsInitialization(!data.has_users);
-      } catch (error) {
-        console.error('Failed to check auth status:', error);
-      } finally {
-        setAuthStatusChecked(true);
-      }
-    };
-    checkAuthStatus();
-  }, []);
+  const { token, login } = useAuth();
 
   const handleLogin = async (username, password) => {
     const response = await fetch('http://localhost:8000/api/auth/token', {
@@ -72,10 +51,49 @@ function App() {
     }
 
     const data = await response.json();
-    setToken(data.access_token);
+    login(data.access_token); // Use the login function from context
   };
 
-  if (!authStatusChecked) {
+  return (
+    <Routes>
+      {/* Public routes */}
+      <Route path="/initialize" element={<Initialize />} />
+      
+      {/* If user is logged in, /login and /register redirect to home */}
+      <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />} />
+      <Route path="/register" element={token ? <Navigate to="/" replace /> : <Register />} />
+
+      {/* Protected routes are nested here */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<NewProject />} />
+          <Route path="/project/:projectName" element={<Workspace />} />
+        </Route>
+      </Route>
+    </Routes>
+  );
+}
+
+// --- Initializer: Checks if the app needs setup before rendering the main app ---
+function Initializer() {
+  const [needsInitialization, setNeedsInitialization] = useState(null);
+
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/auth/status');
+        if (!response.ok) throw new Error('Could not connect to backend.');
+        const data = await response.json();
+        setNeedsInitialization(!data.has_users);
+      } catch (error) {
+        console.error('Failed to check auth status:', error);
+        setNeedsInitialization(false); // Default to normal flow if backend check fails
+      }
+    };
+    checkAuthStatus();
+  }, []);
+
+  if (needsInitialization === null) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
@@ -83,48 +101,27 @@ function App() {
     );
   }
 
-  return (
-    <Routes>
-      {/* Redirect logic */}
-      <Route
-        path="/"
-        element={
-          needsInitialization ? (
-            <Navigate to="/initialize" />
-          ) : !token ? (
-            <Navigate to="/login" />
-          ) : (
-            // If logged in, proceed to the main layout
-            <AppLayout />
-          )
-        }
-      >
-        {/* Nested routes for the main app layout */}
-        <Route index element={<NewProject />} />
-        <Route path="project/:projectName" element={<Workspace />} />
-      </Route>
+  // If initialization is needed, all routes should point to the initialize page.
+  if (needsInitialization) {
+    return (
+        <Routes>
+            <Route path="/initialize" element={<Initialize />} />
+            <Route path="*" element={<Navigate to="/initialize" replace />} />
+        </Routes>
+    );
+  }
 
-      {/* Standalone routes */}
-      <Route path="/initialize" element={<Initialize />} />
-      <Route path="/login" element={<Login onLogin={handleLogin} />} />
-      <Route path="/register" element={<Register />} />
-
-      {/* Catch-all redirect */}
-      <Route
-        path="*"
-        element={<Navigate to="/" />}
-      />
-    </Routes>
-  );
+  // If initialization is not needed, render the main app.
+  return <App />;
 }
 
-// --- Root Component ---
+// --- Root Component: Provides context and routing ---
 export default function Root() {
   return (
     <Router>
       <AuthProvider>
         <CssBaseline />
-        <App />
+        <Initializer />
       </AuthProvider>
     </Router>
   );

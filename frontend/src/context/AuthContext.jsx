@@ -1,37 +1,28 @@
 import React, { useState, useContext } from 'react';
 
-// Create the context
+// 1. Create the context
 const AuthContext = React.createContext(null);
 
-// Create a custom hook to use the auth context
+// 2. Create a custom hook for easy access to the context
 export function useAuth() {
   return useContext(AuthContext);
 }
 
-// Create the provider component
+// 3. Create the provider component that will wrap our app
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(localStorage.getItem('authToken'));
+  const [token, setToken] = useState(null);
 
-  const handleLogin = (newToken) => {
-    if (newToken) {
-      localStorage.setItem('authToken', newToken);
-    } else {
-      localStorage.removeItem('authToken');
-    }
+  // Function to update the token
+  const login = (newToken) => {
     setToken(newToken);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
+  // Function to clear the token
+  const logout = () => {
     setToken(null);
   };
 
-  // The value passed to the provider
-  const value = {
-    token,
-    setToken: handleLogin, // Provide a consistent function name
-    logout: handleLogout,
-  };
+  const value = { token, login, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

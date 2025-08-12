@@ -10,17 +10,18 @@ import {
   Box,
   Button,
 } from "@mui/material";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from '../context/AuthContext';
 
 function Header({ onLogout }) {
   const [projects, setProjects] = useState([]);
   const [selectedValue, setSelectedValue] = useState("");
   const { projectName } = useParams();
   const navigate = useNavigate();
-  const { token } = useAuth(); // Get the auth token
+  const { token } = useAuth();
 
+  // This function is now ONLY called when the user interacts with the dropdown.
   const fetchProjects = () => {
-    if (!token) return; // Don't fetch if not logged in
+    if (!token) return;
     fetch("http://localhost:8000/api/projects", {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -30,34 +31,30 @@ function Header({ onLogout }) {
         if (!res.ok) throw new Error("Failed to fetch projects");
         return res.json();
       })
-      .then((data) => setProjects(data))
+      .then((data) => {
+        setProjects(data);
+        // After fetching, ensure the selected value is still valid
+        if (projectName && !data.some(p => p.name === projectName)) {
+            navigate('/');
+        }
+      })
       .catch((err) => console.error(err));
   };
 
-  // Effect 1: Fetch projects when the component mounts or token changes
+  // This effect now ONLY syncs the URL parameter to the dropdown's display value.
+  // It no longer fetches data.
   useEffect(() => {
-    fetchProjects();
-  }, [token]);
-
-  // Effect 2: Sync URL parameter with dropdown state
-  useEffect(() => {
-    if (projectName && projects.length > 0) {
-      const projectExists = projects.some((p) => p.name === projectName);
-      setSelectedValue(projectExists ? projectName : "");
-    } else if (!projectName) {
-      setSelectedValue("");
+    if (projectName) {
+        setSelectedValue(projectName);
+    } else {
+        setSelectedValue("");
     }
-  }, [projectName, projects]);
+  }, [projectName]);
 
   const handleProjectChange = (event) => {
     const newProjectName = event.target.value;
     setSelectedValue(newProjectName);
     navigate(newProjectName ? `/project/${newProjectName}` : "/");
-  };
-
-  // handleOpen now just calls the reusable fetch function
-  const handleOpen = () => {
-    fetchProjects();
   };
 
   return (
@@ -74,7 +71,7 @@ function Header({ onLogout }) {
           <Select
             value={selectedValue}
             onChange={handleProjectChange}
-            onOpen={handleOpen}
+            onOpen={fetchProjects} // <-- This is now the ONLY place projects are fetched from.
             displayEmpty
             renderValue={(selected) => {
               if (!selected) return <em>Select a Project</em>;
@@ -111,4 +108,3 @@ function Header({ onLogout }) {
 }
 
 export default Header;
-

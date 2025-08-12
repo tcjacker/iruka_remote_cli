@@ -5,18 +5,27 @@ import DockerSidebar from '../components/DockerSidebar';
 import ProjectSettings from '../components/ProjectSettings';
 import { Box, Typography, CircularProgress, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import { ExpandMore } from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
 
 function Workspace() {
   const { projectName } = useParams();
   const [project, setProject] = useState(null);
   const [selectedEnvId, setSelectedEnvId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { token } = useAuth();
 
   const fetchProjectData = () => {
-    if (!projectName) return;
+    // No need to check for token here, ProtectedRoute already did it.
     setIsLoading(true);
-    fetch('http://localhost:8000/api/projects')
-      .then(res => res.json())
+    fetch('http://localhost:8000/api/projects', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch project data');
+        return res.json();
+      })
       .then(projects => {
         const currentProject = projects.find(p => p.name === projectName);
         setProject(currentProject);
@@ -24,13 +33,19 @@ function Workspace() {
           setSelectedEnvId(null);
         }
       })
-      .catch(error => console.error('Error fetching project:', error))
+      .catch(error => {
+        console.error('Error fetching project:', error.message);
+        setProject(null); // Clear project on error
+      })
       .finally(() => setIsLoading(false));
   };
 
+  // This useEffect now safely relies on ProtectedRoute ensuring the token exists.
   useEffect(() => {
-    fetchProjectData();
-  }, [projectName]);
+    if (projectName) {
+      fetchProjectData();
+    }
+  }, [projectName, token]); // Keep token dependency to refetch if it ever changes
 
   const handleEnvSelect = (envId) => {
     const env = project?.environments.find(e => e.id === envId);
@@ -42,34 +57,22 @@ function Workspace() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress /></Box>;
   }
 
   if (!project) {
-    return (
-      <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography sx={{ color: 'gray' }}>Select a project from the top menu.</Typography>
-      </Box>
-    );
+    return <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ color: 'gray' }}>Project not found or access denied.</Typography></Box>;
   }
 
   return (
     <>
-      {/* Pass the selectedEnvId to the sidebar */}
       <DockerSidebar 
         project={project} 
         onEnvSelect={handleEnvSelect} 
         selectedEnvId={selectedEnvId} 
         onDataChange={fetchProjectData} 
       />
-      <Box 
-        component="main"
-        sx={{ flexGrow: 1, p: 3, width: `calc(100% - 280px)` }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, p: 3, width: `calc(100% - 280px)` }}>
         <Accordion sx={{ bgcolor: '#2d2d2d', color: 'white', mb: 2 }}>
           <AccordionSummary expandIcon={<ExpandMore sx={{ color: 'white' }} />}>
             <Typography>Project Settings</Typography>
@@ -81,14 +84,10 @@ function Workspace() {
 
         <Box sx={{ height: 'calc(100vh - 64px - 48px - 80px)', position: 'relative', bgcolor: '#1e1e1e' }}>
           {selectedEnvId ? (
-            <Shell 
-              key={selectedEnvId}
-              projectName={projectName} 
-              dockerId={selectedEnvId}
-            />
+            <Shell key={selectedEnvId} projectName={projectName} dockerId={selectedEnvId} />
           ) : (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <Typography sx={{ color: 'gray' }}>Select a running environment from the left to open the shell.</Typography>
+              <Typography sx={{ color: 'gray' }}>Select a running environment to open the shell.</Typography>
             </Box>
           )}
         </Box>

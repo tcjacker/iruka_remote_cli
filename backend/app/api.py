@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -10,6 +11,16 @@ from .auth import User, UserCreate, Token, get_current_user
 # Create two routers: one for auth and one for protected API endpoints
 auth_router = APIRouter()
 api_router = APIRouter()
+
+# --- Helper Functions ---
+def sanitize_for_docker(name: str) -> str:
+    """Sanitizes a string to be a valid Docker container name."""
+    # Remove any characters not allowed by Docker
+    sanitized = re.sub(r'[^a-zA-Z0-9_.-]', '', name)
+    # Ensure it doesn't start with a forbidden character
+    if sanitized.startswith(('_', '.', '-')):
+        sanitized = 'container' + sanitized
+    return sanitized
 
 # --- Pydantic Models (subset of original, some are now in auth.py) ---
 
@@ -133,7 +144,11 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
     project_service.update_project(project_name, proj)
 
     try:
-        container_name = f"gemini-env-{project_name}-{env_data.name}"
+        # Sanitize names for Docker compatibility
+        sane_project_name = sanitize_for_docker(project_name)
+        sane_env_name = sanitize_for_docker(env_data.name)
+        container_name = f"gemini-env-{sane_project_name}-{sane_env_name}"
+        
         container_env_vars = {
             "GEMINI_API_KEY": proj.get("gemini_token", ""),
             "GIT_TOKEN": proj.get("git_token", "")
@@ -143,7 +158,7 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
             container_name=container_name, 
             base_image=env_data.base_image, 
             git_repo_url=proj["git_repo"],
-            env_name=env_data.name,
+            env_name=env_data.name, # Pass original name for git branch
             env_vars=container_env_vars,
             branch_mode=env_data.branch_mode,
             existing_branch=env_data.existing_branch
@@ -169,3 +184,40 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
 @api_router.get("/docker-images", response_model=List[str])
 async def get_docker_images(current_user: User = Depends(get_current_user)):
     return docker_service.list_images()
+
+@api_router.post("/projects/{project_name}/environments/{env_id}/stop", status_code=200)
+async def stop_environment(project_name: str, env_id: str, current_user: User = Depends(get_current_user)):
+    proj = project_service.get_project(project_name)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    
+    docker_service.stop_container(container_name)
+    
+    for e in proj.get("environments", []):
+        if e["id"] == env_id:
+            e["status"] = "stopped"
+            break
+    project_service.update_project(project_name, proj)
+    
+    return {"message": "Environment stopped."}
+
+@api_router.delete("/projects/{project_name}/environments/{env_id}", status_code=204)
+async def delete_environment(project_name: str, env_id: str, current_user: User = Depends(get_current_user)):
+    proj = project_service.get_project(project_name)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    
+    docker_service.remove_container(container_name)
+    
+    proj["environments"] = [e for e in proj.get("environments", []) if e["id"] != env_id]
+    project_service.update_project(project_name, proj)
+    
+    return
