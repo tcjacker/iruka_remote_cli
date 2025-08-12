@@ -41,6 +41,7 @@ Thumbs.db
 
 # Project data
 backend/data/projects.json
+backend/data/db.json
 
 # Logs
 logs/

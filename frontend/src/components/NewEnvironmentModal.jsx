@@ -3,6 +3,7 @@ import {
     Modal, Box, Typography, TextField, Button, Select, MenuItem, FormControl, 
     InputLabel, RadioGroup, FormControlLabel, Radio, CircularProgress 
 } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 
 const style = {
   position: 'absolute',
@@ -20,13 +21,14 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
   const [envName, setEnvName] = useState('');
   const [baseImage, setBaseImage] = useState('');
   const [images, setImages] = useState([]);
-  const [branchMode, setBranchMode] = useState('new'); // 'new' or 'existing'
+  const [branchMode, setBranchMode] = useState('new');
   const [existingBranch, setExistingBranch] = useState('');
   const [remoteBranches, setRemoteBranches] = useState([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const { token } = useAuth(); // Get the auth token
 
   useEffect(() => {
-    if (open) {
+    if (open && token) {
       // Reset fields
       setEnvName('');
       setBaseImage('');
@@ -34,29 +36,33 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       setExistingBranch('');
       setRemoteBranches([]);
       
-      // Fetch docker images
-      fetch('http://localhost:8000/api/docker-images')
+      // Fetch docker images with auth
+      fetch('http://localhost:8000/api/docker-images', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
         .then(res => res.json())
         .then(data => setImages(data))
         .catch(err => console.error("Failed to fetch images:", err));
     }
-  }, [open]);
+  }, [open, token]);
 
   useEffect(() => {
-    if (branchMode === 'existing' && open) {
+    if (branchMode === 'existing' && open && token) {
       setIsLoadingBranches(true);
       const repoUrl = encodeURIComponent(project.git_repo);
-      const token = project.git_token || '';
-      fetch(`http://localhost:8000/api/git/branches?repo_url=${repoUrl}&token=${token}`)
+      const gitApiToken = project.git_token || '';
+      
+      // Fetch remote branches with auth
+      fetch(`http://localhost:8000/api/git/branches?repo_url=${repoUrl}&token=${gitApiToken}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
         .then(res => {
             if (!res.ok) throw new Error('Failed to fetch branches. Check repo URL and token.');
             return res.json();
         })
         .then(data => {
             setRemoteBranches(data);
-            if (data.length > 0) {
-                setExistingBranch(data[0]); // Default to the first branch
-            }
+            if (data.length > 0) setExistingBranch(data[0]);
         })
         .catch(err => {
             alert(`Error: ${err.message}`);
@@ -64,7 +70,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
         })
         .finally(() => setIsLoadingBranches(false));
     }
-  }, [branchMode, open, project]);
+  }, [branchMode, open, project, token]);
 
   const handleCreate = () => {
     if (!envName || !baseImage || (branchMode === 'existing' && !existingBranch)) {
@@ -79,9 +85,13 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       existing_branch: branchMode === 'existing' ? existingBranch : null
     };
 
+    // Create environment with auth
     fetch(`http://localhost:8000/api/projects/${project.name}/environments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}` 
+      },
       body: JSON.stringify(body),
     })
     .then(res => {
