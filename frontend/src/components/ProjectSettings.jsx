@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Box, TextField, Button, Typography, Snackbar } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 
 function ProjectSettings({ project, onDataChange }) {
   const [geminiToken, setGeminiToken] = useState(project.gemini_token || '');
   const [gitToken, setGitToken] = useState(project.git_token || '');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const { token } = useAuth();
 
   const handleSave = () => {
     const settings = {
@@ -14,7 +16,10 @@ function ProjectSettings({ project, onDataChange }) {
 
     fetch(`http://localhost:8000/api/projects/${project.name}/settings`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
       body: JSON.stringify(settings),
     })
     .then(res => {
