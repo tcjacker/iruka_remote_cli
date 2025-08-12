@@ -2,25 +2,38 @@ import React, { useState } from 'react';
 import { Drawer, List, ListItem, ListItemButton, ListItemText, Typography, Box, Button, IconButton } from '@mui/material';
 import { Add, Stop, Delete } from '@mui/icons-material';
 import NewEnvironmentModal from './NewEnvironmentModal';
+import { useAuth } from '../context/AuthContext';
 
 const DRAWER_WIDTH = 280;
 
-function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) { // Receive selectedEnvId
+function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const { token } = useAuth();
 
   if (!project) {
     return null;
   }
 
+  // Define the authenticated request helper function ONCE.
+  const makeAuthenticatedRequest = (url, options = {}) => {
+    const defaultOptions = {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    };
+    return fetch(url, { ...defaultOptions, ...options });
+  };
+
   const handleStop = (envId, e) => {
     e.stopPropagation();
-    fetch(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/stop`, { method: 'POST' })
+    makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/stop`, { method: 'POST' })
       .then(() => onDataChange());
   };
 
   const handleDelete = (envId, e) => {
     e.stopPropagation();
-    fetch(`http://localhost:8000/api/projects/${project.name}/environments/${envId}`, { method: 'DELETE' })
+    makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}`, { method: 'DELETE' })
       .then(() => onDataChange());
   };
 
@@ -66,14 +79,12 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) { 
                 </>
               }
             >
-              {/* This is the critical fix */}
               <ListItemButton 
                 onClick={() => onEnvSelect(env.id)} 
-                selected={selectedEnvId === env.id} // Apply selected state
+                selected={selectedEnvId === env.id}
                 sx={{
-                    // Custom styles for the selected item
                     '&.Mui-selected': {
-                        backgroundColor: 'rgba(0, 123, 255, 0.24)', // A pleasant blue highlight
+                        backgroundColor: 'rgba(0, 123, 255, 0.24)',
                         '&:hover': {
                             backgroundColor: 'rgba(0, 123, 255, 0.3)',
                         }

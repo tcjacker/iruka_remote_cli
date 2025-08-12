@@ -1,22 +1,33 @@
 import asyncio
 import json
+import re
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .services import docker_service
 
 router = APIRouter()
 
+# --- Helper Functions (copied from api.py for consistency) ---
+def sanitize_for_docker(name: str) -> str:
+    """Sanitizes a string to be a valid Docker container name."""
+    sanitized = re.sub(r'[^a-zA-Z0-9_.-]', '', name)
+    if sanitized.startswith(('_', '.', '-')):
+        sanitized = 'container' + sanitized
+    return sanitized
+
 @router.websocket("/ws/shell/{project_name}/{env_id}")
 async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
     await websocket.accept()
-    container_name = f"gemini-env-{project_name}-{env_id}"
+    
+    # Sanitize names to construct the correct container name
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    
     exec_id = None
     shell_socket = None
     
     try:
         exec_id, shell_socket = docker_service.setup_shell_session(container_name)
-        
-        # This is the simplest possible loop to forward data.
-        # It directly bridges the client WebSocket and the Docker exec socket.
         
         async def forward_client_to_shell():
             """Reads from the client and sends to the shell."""
@@ -39,14 +50,12 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
             loop = asyncio.get_running_loop()
             while True:
                 try:
-                    # Use run_in_executor to avoid blocking the main thread
                     output = await loop.run_in_executor(
                         None, shell_socket.recv, 4096
                     )
                     if output:
                         await websocket.send_text(output.decode('utf-8', errors='ignore'))
                     else:
-                        # Socket closed
                         break
                 except Exception:
                     break

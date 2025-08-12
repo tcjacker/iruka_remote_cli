@@ -1,9 +1,72 @@
+import json
 import docker
 import traceback
 import git
 import tempfile
 import shutil
-from typing import Optional
+from typing import Optional, List, Dict, Any
+
+# --- Data Persistence Service ---
+
+class ProjectService:
+    def __init__(self, db_path: str = 'data/db.json'):
+        self.db_path = db_path
+
+    def _load_data(self) -> Dict[str, List[Dict[str, Any]]]:
+        try:
+            with open(self.db_path, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # If file doesn't exist or is empty/corrupted, start fresh
+            return {"users": [], "projects": []}
+
+    def _save_data(self, data: Dict[str, List[Dict[str, Any]]]):
+        with open(self.db_path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    # Project-specific methods
+    def get_projects(self) -> List[Dict[str, Any]]:
+        data = self._load_data()
+        return data.get("projects", [])
+
+    def get_project(self, name: str) -> Optional[Dict[str, Any]]:
+        projects = self.get_projects()
+        for p in projects:
+            if p.get("name") == name:
+                return p
+        return None
+
+    def create_project(self, project_data: Dict[str, Any]) -> Dict[str, Any]:
+        data = self._load_data()
+        if self.get_project(project_data["name"]):
+            raise ValueError("Project with this name already exists.")
+        
+        # Ensure the projects list exists
+        if "projects" not in data:
+            data["projects"] = []
+            
+        data["projects"].append(project_data)
+        self._save_data(data)
+        return project_data
+
+    def update_project(self, name: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        data = self._load_data()
+        project_found = False
+        for i, p in enumerate(data.get("projects", [])):
+            if p.get("name") == name:
+                # Update the project dictionary
+                data["projects"][i].update(updates)
+                project_found = True
+                break
+        
+        if not project_found:
+            return None
+            
+        self._save_data(data)
+        return data["projects"][i]
+
+# --- Docker Service ---
+# (DockerService class remains unchanged as it doesn't handle project data persistence)
 
 class DockerService:
     def __init__(self):
@@ -25,10 +88,8 @@ class DockerService:
             else:
                 auth_url = f"https://{url_no_protocol}"
 
-            # ls-remote is a lightweight way to get refs from a remote repo
             output = g.ls_remote('--heads', auth_url)
             
-            # Output format is: <commit_hash>\trefs/heads/<branch_name>
             branches = [line.split('\t')[1].replace('refs/heads/', '') for line in output.splitlines()]
             return sorted(branches)
         finally:
@@ -60,15 +121,13 @@ git clone "$clone_url" /workspace 2>&1
         git config --global user.name "Gemini Agent"
         git config --global user.email "agent@example.com"
         
-        # This is the new conditional logic for branch handling
         if [ \"{branch_mode}\" = \"new\" ]; then
             branch_name="feature/{env_name}"
             git checkout -b "$branch_name"
             git push --set-upstream origin "$branch_name"
         else
-            git checkout "{existing_branch}"
-            # Ensure the local branch tracks the remote branch
-            git branch --set-upstream-to=origin/"{existing_branch}" "{existing_branch}"
+            git checkout \"{existing_branch}\"
+            git branch --set-upstream-to=origin/\"{existing_branch}\" \"{existing_branch}\"
         fi
         
         touch /tmp/setup_complete
@@ -87,7 +146,6 @@ git clone "$clone_url" /workspace 2>&1
             self.remove_container(container_name)
             raise e
 
-    # ... (other methods remain the same)
     def list_images(self) -> list[str]:
         images = self.client.images.list()
         tags = [tag for image in images if image.tags for tag in image.tags]
@@ -136,4 +194,6 @@ git clone "$clone_url" /workspace 2>&1
     def resize_shell(self, exec_id: str, rows: int, cols: int):
         self.api_client.exec_resize(exec_id, height=rows, width=cols)
 
+# Instantiate services
+project_service = ProjectService()
 docker_service = DockerService()
