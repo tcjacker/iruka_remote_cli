@@ -3,6 +3,7 @@ import json
 import re
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .services import docker_service
+from urllib.parse import unquote
 
 router = APIRouter()
 
@@ -18,9 +19,12 @@ def sanitize_for_docker(name: str) -> str:
 async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
     await websocket.accept()
     
+    # URL decode the project name in case it contains UTF-8 encoded characters
+    decoded_project_name = unquote(project_name)
+    
     # First check if the environment is still initializing
     from .services import project_service
-    proj = project_service.get_project(project_name)
+    proj = project_service.get_project(decoded_project_name)
     if proj:
         env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
         if env and env.get("status") == "pending":
@@ -28,22 +32,18 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
             # We could wait for the setup to complete, but for now let's just inform the user
     
     # Sanitize names to construct the correct container name
-    sane_project_name = sanitize_for_docker(project_name)
+    sane_project_name = sanitize_for_docker(decoded_project_name)
     sane_env_id = sanitize_for_docker(env_id)
     
-    # Try to determine if this is a Claude or Gemini environment
-    claude_container_name = f"claude-env-{sane_project_name}-{sane_env_id}"
-    gemini_container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    # Try to determine if this is a Claude or Gemini environment by checking the project data
+    ai_tool = "gemini"  # default
+    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
     
-    # Check which container exists
-    from .services import docker_service
-    try:
-        docker_service.client.containers.get(claude_container_name)
-        container_name = claude_container_name
-        ai_tool = "claude"
-    except:
-        container_name = gemini_container_name
-        ai_tool = "gemini"
+    if proj:
+        env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+        if env and env.get("ai_tool") == "claude":
+            ai_tool = "claude"
+            container_name = f"claude-env-{sane_project_name}-{sane_env_id}"
     
     exec_id = None
     shell_socket = None
