@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Drawer, List, ListItem, ListItemButton, ListItemText, Typography, Box, Button, IconButton } from '@mui/material';
-import { Add, Stop, Delete } from '@mui/icons-material';
+import { Add, Stop, Delete, PlayArrow } from '@mui/icons-material';
 import NewEnvironmentModal from './NewEnvironmentModal';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,12 +9,41 @@ const DRAWER_WIDTH = 280;
 function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
   const [modalOpen, setModalOpen] = useState(false);
   const { token } = useAuth();
+  
+  // Check environment status periodically for pending environments
+  useEffect(() => {
+    if (!project || !project.environments || project.environments.length === 0) return;
+    
+    const pendingEnvs = project.environments.filter(env => env.status === 'pending');
+    if (pendingEnvs.length === 0) return;
+    
+    const interval = setInterval(() => {
+      pendingEnvs.forEach(env => {
+        fetch(`http://localhost:8000/api/projects/${project.name}/environments/${env.id}/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'running') {
+            // Update the environment status
+            onDataChange();
+          }
+        })
+        .catch(err => {
+          console.error("Failed to check environment status:", err);
+        });
+      });
+    }, 5000); // Check every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, [project, token, onDataChange]);
 
   if (!project) {
     return null;
   }
 
-  // Define the authenticated request helper function ONCE.
   const makeAuthenticatedRequest = (url, options = {}) => {
     const defaultOptions = {
       headers: {
@@ -28,6 +57,12 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
   const handleStop = (envId, e) => {
     e.stopPropagation();
     makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/stop`, { method: 'POST' })
+      .then(() => onDataChange());
+  };
+
+  const handleStart = (envId, e) => {
+    e.stopPropagation();
+    makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/start`, { method: 'POST' })
       .then(() => onDataChange());
   };
 
@@ -70,9 +105,15 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
             <ListItem key={env.id} disablePadding
               secondaryAction={
                 <>
-                  <IconButton size="small" onClick={(e) => handleStop(env.id, e)} disabled={env.status !== 'running'} title="Stop">
-                    <Stop fontSize="small" sx={{ color: env.status !== 'running' ? 'gray' : 'red' }} />
-                  </IconButton>
+                  {env.status === 'running' ? (
+                    <IconButton size="small" onClick={(e) => handleStop(env.id, e)} title="Stop">
+                      <Stop fontSize="small" sx={{ color: 'red' }} />
+                    </IconButton>
+                  ) : (
+                    <IconButton size="small" onClick={(e) => handleStart(env.id, e)} title="Start">
+                      <PlayArrow fontSize="small" sx={{ color: '#4caf50' }} />
+                    </IconButton>
+                  )}
                   <IconButton size="small" onClick={(e) => handleDelete(env.id, e)} title="Delete">
                     <Delete fontSize="small" />
                   </IconButton>
@@ -95,7 +136,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
                   primary={env.id} 
                   primaryTypographyProps={{ style: { color: 'white' } }}
                   secondary={`Status: ${env.status}`}
-                  secondaryTypographyProps={{ style: { color: env.status === 'running' ? '#4caf50' : 'gray' } }}
+                  secondaryTypographyProps={{ style: { color: env.status === 'running' ? '#4caf50' : env.status === 'pending' ? '#ff9800' : 'gray' } }}
                 />
               </ListItemButton>
             </ListItem>

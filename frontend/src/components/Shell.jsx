@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css';
 function Shell({ projectName, dockerId }) {
   const terminalRef = useRef(null);
   const isInitialized = useRef(false);
+  const [isEnvironmentReady, setIsEnvironmentReady] = useState(false);
 
   useEffect(() => {
     if (isInitialized.current || !terminalRef.current) {
@@ -26,6 +27,10 @@ function Shell({ projectName, dockerId }) {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
+
+    // Display initialization message
+    term.write("[Environment Initializing] Please wait while the environment is being set up...\r\n");
+    term.write("[This may take a few minutes as we install Node.js, AI tools, and clone your repository.]\r\n\r\n");
 
     const wsUrl = `ws://localhost:8000/ws/shell/${projectName}/${dockerId}`;
     const ws = new WebSocket(wsUrl);

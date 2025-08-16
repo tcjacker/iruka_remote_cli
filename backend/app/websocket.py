@@ -18,16 +18,38 @@ def sanitize_for_docker(name: str) -> str:
 async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
     await websocket.accept()
     
+    # First check if the environment is still initializing
+    from .services import project_service
+    proj = project_service.get_project(project_name)
+    if proj:
+        env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+        if env and env.get("status") == "pending":
+            await websocket.send_text("[Environment Initializing] Please wait while the environment is being set up...\r\n")
+            # We could wait for the setup to complete, but for now let's just inform the user
+    
     # Sanitize names to construct the correct container name
     sane_project_name = sanitize_for_docker(project_name)
     sane_env_id = sanitize_for_docker(env_id)
-    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    
+    # Try to determine if this is a Claude or Gemini environment
+    claude_container_name = f"claude-env-{sane_project_name}-{sane_env_id}"
+    gemini_container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    
+    # Check which container exists
+    from .services import docker_service
+    try:
+        docker_service.client.containers.get(claude_container_name)
+        container_name = claude_container_name
+        ai_tool = "claude"
+    except:
+        container_name = gemini_container_name
+        ai_tool = "gemini"
     
     exec_id = None
     shell_socket = None
     
     try:
-        exec_id, shell_socket = docker_service.setup_shell_session(container_name)
+        exec_id, shell_socket = docker_service.setup_shell_session(container_name, ai_tool)
         
         async def forward_client_to_shell():
             """Reads from the client and sends to the shell."""

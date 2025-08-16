@@ -188,6 +188,14 @@ git clone "$clone_url" /workspace 2>&1
         if container.status != "running":
             raise RuntimeError(f"Container {container_name} is not running.")
         
+        # Check if the setup is complete by checking for the setup_complete file
+        try:
+            result = container.exec_run("test -f /tmp/setup_complete")
+            if result.exit_code != 0:
+                raise RuntimeError("Environment is still initializing. Please wait for setup to complete.")
+        except:
+            raise RuntimeError("Environment is still initializing. Please wait for setup to complete.")
+        
         ai_command = "claude" if ai_tool == "claude" else "gemini"
         
         robust_start_command = f"""
