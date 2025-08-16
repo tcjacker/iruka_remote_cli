@@ -146,8 +146,10 @@ EOF
             git checkout -b "$branch_name"
             git push --set-upstream origin "$branch_name"
         else
-            git checkout \"{existing_branch}\"
-            git branch --set-upstream-to=origin/\"{existing_branch}\" \"{existing_branch}\"
+            # For existing branch, fetch all branches first and then checkout
+            git fetch origin
+            # Try to checkout the branch, creating local branch if it doesn't exist
+            git checkout -B "{existing_branch}" origin/"{existing_branch}"
         fi
         
         touch /tmp/setup_complete
