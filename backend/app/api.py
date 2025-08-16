@@ -173,7 +173,10 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
         raise HTTPException(status_code=400, detail=f"Environment '{env_data.name}' already exists.")
 
     new_env = Environment(id=env_data.name, base_image=env_data.base_image, status="pending")
-    proj.setdefault("environments", []).append(new_env.dict())
+    # Add ai_tool to the environment data
+    env_dict = new_env.dict()
+    env_dict["ai_tool"] = env_data.ai_tool
+    proj.setdefault("environments", []).append(env_dict)
     project_service.update_project(project_name, proj)
 
     try:
@@ -232,7 +235,15 @@ async def stop_environment(project_name: str, env_id: str, current_user: User = 
 
     sane_project_name = sanitize_for_docker(project_name)
     sane_env_id = sanitize_for_docker(env_id)
-    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    # Find the environment to get the ai_tool
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+    container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
     
     docker_service.stop_container(container_name)
     
@@ -253,7 +264,15 @@ async def start_environment(project_name: str, env_id: str, current_user: User =
 
     sane_project_name = sanitize_for_docker(project_name)
     sane_env_id = sanitize_for_docker(env_id)
-    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    # Find the environment to get the ai_tool
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+    container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
     
     try:
         docker_service.start_container(container_name)
@@ -278,7 +297,15 @@ async def delete_environment(project_name: str, env_id: str, current_user: User 
 
     sane_project_name = sanitize_for_docker(project_name)
     sane_env_id = sanitize_for_docker(env_id)
-    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    # Find the environment to get the ai_tool
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+    container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
     
     docker_service.remove_container(container_name)
     
@@ -302,7 +329,7 @@ async def get_environment_status(project_name: str, env_id: str, current_user: U
         # Construct container name
         sane_project_name = sanitize_for_docker(project_name)
         sane_env_id = sanitize_for_docker(env_id)
-        tool_prefix = "claude" if "claude" in [e.get("ai_tool", "") for e in proj.get("environments", []) if e["id"] == env_id] else "gemini"
+        tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
         container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
         
         # Check if container exists and setup is complete
