@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 # --- Configuration ---
 SECRET_KEY = "a_very_secret_key_that_should_be_in_env_vars"  # In a real app, use environment variables
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 DB_PATH = 'data/db.json'
 
 # --- Pydantic Models ---

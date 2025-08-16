@@ -28,6 +28,7 @@ class Environment(BaseModel):
     id: str
     base_image: str
     status: str = "stopped"
+    sessionId: Optional[str] = None  # Cache for Claude session ID
 
 class Project(BaseModel):
     name: str
@@ -177,6 +178,7 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
     # Add ai_tool to the environment data
     env_dict = new_env.dict()
     env_dict["ai_tool"] = env_data.ai_tool
+    env_dict["sessionId"] = None  # Initialize sessionId cache
     proj.setdefault("environments", []).append(env_dict)
     project_service.update_project(project_name, proj)
 

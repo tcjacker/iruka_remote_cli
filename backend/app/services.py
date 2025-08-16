@@ -233,10 +233,15 @@ EOF
         except docker.errors.NotFound: pass
 
     def setup_shell_session(self, container_name: str, ai_tool: str = "gemini"):
+        import time
+        start_time = time.time()
+        print(f"[PERF] setup_shell_session started for {container_name} with {ai_tool}")
+        
         container = self.client.containers.get(container_name)
         if container.status != "running":
             raise RuntimeError(f"Container {container_name} is not running.")
         
+        setup_check_start = time.time()
         # Check if the setup is complete by checking for the setup_complete file
         try:
             result = container.exec_run("test -f /tmp/setup_complete")
@@ -244,6 +249,9 @@ EOF
                 raise RuntimeError("Environment is still initializing. Please wait for setup to complete.")
         except:
             raise RuntimeError("Environment is still initializing. Please wait for setup to complete.")
+        
+        setup_check_time = time.time() - setup_check_start
+        print(f"[PERF] Setup check took {setup_check_time:.3f}s")
         
         ai_command = "claude" if ai_tool == "claude" else "gemini"
         
@@ -266,44 +274,39 @@ EOF
                 "fi"
             ]
         else:
-            # Claude with automatic session recovery
+            # Claude with simple session continuation
+            print(f"[PERF] Using claude -c for session continuation")
             cmd = [
                 "sh", "-c",
+                "echo \"[PERF] Starting Claude session recovery at $(date)\"; "
                 "if [ -f /etc/environment ]; then . /etc/environment; fi; "
                 "export TERM=xterm-256color; "
                 "while [ ! -f \"/tmp/setup_complete\" ]; do "
                 "  sleep 1; "
                 "done; "
-                "WORKSPACE_DIR='/root/.claude/projects/-workspace'; "
+                "echo \"[PERF] Setup complete check passed at $(date)\"; "
                 "cd /workspace; "
-                "if [ -d \"$WORKSPACE_DIR\" ] && [ \"$(ls -A \"$WORKSPACE_DIR\"/*.jsonl 2>/dev/null)\" ]; then "
-                "  VALID_SESSION_ID=\"\"; "
-                "  for file in $(ls -t \"$WORKSPACE_DIR\"/*.jsonl 2>/dev/null); do "
-                "    FIRST_LINE=$(head -n 1 \"$file\" 2>/dev/null); "
-                "    if [ -n \"$FIRST_LINE\" ]; then "
-                "      SESSION_ID=$(echo \"$FIRST_LINE\" | grep -o '\"sessionId\":\"[^\"]*\"' | cut -d'\"' -f4 2>/dev/null); "
-                "      if [ -n \"$SESSION_ID\" ]; then "
-                "        VALID_SESSION_ID=\"$SESSION_ID\"; "
-                "        break; "
-                "      fi; "
-                "    fi; "
-                "  done; "
-                "  if [ -n \"$VALID_SESSION_ID\" ]; then "
-                "    echo \"Initializing Claude in project directory...\"; "
-                "    claude --help > /dev/null 2>&1; "
-                "    echo \"Resuming Claude session: $VALID_SESSION_ID from $(pwd)\"; "
-                "    claude -r \"$VALID_SESSION_ID\" 2>&1 || { "
-                "      echo \"Session resume failed, starting new session\"; "
-                "      exec claude; "
-                "    }; "
-                "  else "
-                "    echo \"No valid sessionId found in any file\"; "
-                "  fi; "
-                "fi; "
-                "echo \"Starting new Claude session\"; "
-                "exec claude"
+                "echo \"[PERF] Changed to workspace directory at $(date)\"; "
+                "echo \"[PERF] Attempting to continue previous session at $(date)\"; "
+                "echo \"[DEBUG] Checking claude command availability...\"; "
+                "which claude || echo \"[ERROR] claude command not found\"; "
+                "echo \"[DEBUG] Current directory: $(pwd)\"; "
+                "echo \"[DEBUG] Environment variables:\"; "
+                "env | grep -E '(ANTHROPIC|CLAUDE)' || echo \"[DEBUG] No ANTHROPIC/CLAUDE env vars found\"; "
+                "echo \"[DEBUG] Running claude -c with proper TTY setup...\"; "
+                "echo \"[DEBUG] Checking for existing sessions...\"; "
+                "ls -la ~/.claude/ 2>/dev/null || echo \"[DEBUG] No ~/.claude directory found\"; "
+                "echo \"[DEBUG] Attempting session continuation...\"; "
+                "script -qec 'claude -c' /dev/null 2>&1 || { "
+                "  echo \"[DEBUG] Session continuation failed, trying direct claude start...\"; "
+                "  script -qec 'claude' /dev/null 2>&1 || { "
+                "    echo \"[ERROR] Both session continuation and new session failed\"; "
+                "    echo \"[FALLBACK] Starting basic claude without TTY...\"; "
+                "  }; "
+                "};"
             ]
         
+        cmd_creation_start = time.time()
         exec_instance = self.api_client.exec_create(
             container.id,
             cmd,
@@ -311,8 +314,19 @@ EOF
             tty=True,
             workdir="/workspace"
         )
+        cmd_creation_time = time.time() - cmd_creation_start
+        print(f"[PERF] Command creation took {cmd_creation_time:.3f}s")
+        
         exec_id = exec_instance['Id']
+        
+        socket_start_time = time.time()
         socket = self.api_client.exec_start(exec_id, tty=True, socket=True)
+        socket_start_time_elapsed = time.time() - socket_start_time
+        print(f"[PERF] Socket start took {socket_start_time_elapsed:.3f}s")
+        
+        total_time = time.time() - start_time
+        print(f"[PERF] Total setup_shell_session took {total_time:.3f}s")
+        
         return exec_id, socket._sock
 
     def resize_shell(self, exec_id: str, rows: int, cols: int):

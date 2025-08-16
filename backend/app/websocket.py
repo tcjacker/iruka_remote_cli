@@ -91,9 +91,12 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
     shell_socket = None
     
     try:
-        print(f"Attempting to set up shell session for container: '{container_name}' with AI tool: '{ai_tool}'")
+        import time
+        websocket_setup_start = time.time()
+        print(f"[PERF] WebSocket attempting to set up shell session for container: '{container_name}' with AI tool: '{ai_tool}'")
         exec_id, shell_socket = docker_service.setup_shell_session(container_name, ai_tool)
-        print(f"Shell session set up successfully. exec_id: {exec_id}")
+        websocket_setup_time = time.time() - websocket_setup_start
+        print(f"[PERF] WebSocket shell session set up successfully in {websocket_setup_time:.3f}s. exec_id: {exec_id}")
         
         async def forward_client_to_shell():
             """Reads from the client and sends to the shell."""
@@ -109,7 +112,32 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
                     last_activity = time.time()
                     
                     if msg.get('type') == 'input':
-                        shell_socket.sendall(msg['data'].encode('utf-8'))
+                        input_data = msg['data']
+                        # Handle /clear command
+                        if input_data.strip() == '/clear':
+                            # Send clear screen ANSI sequence to client
+                            await websocket.send_text(json.dumps({
+                                'type': 'output',
+                                'data': '\033[2J\033[H'
+                            }))
+                            
+                            # Clear sessionId cache for this environment
+                            try:
+                                from .services import project_service
+                                proj = project_service.get_project(decoded_project_name)
+                                if proj:
+                                    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+                                    if env:
+                                        env["sessionId"] = None
+                                        project_service.save_project(decoded_project_name, proj)
+                                        print(f"Cleared sessionId cache for environment {env_id}")
+                            except Exception as e:
+                                print(f"Failed to clear sessionId cache: {e}")
+                            
+                            continue  # Skip forwarding to shell
+                        
+                        # Forward normal input to shell
+                        shell_socket.sendall(input_data.encode('utf-8'))
                     elif msg.get('type') == 'resize':
                         docker_service.resize_shell(exec_id, msg['rows'], msg['cols'])
                     elif msg.get('type') == 'ping':
