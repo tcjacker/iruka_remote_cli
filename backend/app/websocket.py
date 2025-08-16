@@ -1,11 +1,17 @@
 import asyncio
 import json
 import re
+import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .services import docker_service
 from urllib.parse import unquote
 
 router = APIRouter()
+
+# WebSocket configuration
+WEBSOCKET_TIMEOUT = 300  # 5 minutes timeout
+HEARTBEAT_INTERVAL = 30  # Send heartbeat every 30 seconds
+MAX_IDLE_TIME = 600  # 10 minutes max idle time before disconnect
 
 # --- Helper Functions (copied from api.py for consistency) ---
 def sanitize_for_docker(name: str) -> str:
@@ -91,15 +97,35 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
         
         async def forward_client_to_shell():
             """Reads from the client and sends to the shell."""
+            last_activity = time.time()
             while True:
                 try:
-                    raw_data = await websocket.receive_text()
+                    # Wait for message with timeout
+                    raw_data = await asyncio.wait_for(
+                        websocket.receive_text(), 
+                        timeout=WEBSOCKET_TIMEOUT
+                    )
                     msg = json.loads(raw_data)
+                    last_activity = time.time()
                     
                     if msg.get('type') == 'input':
                         shell_socket.sendall(msg['data'].encode('utf-8'))
                     elif msg.get('type') == 'resize':
                         docker_service.resize_shell(exec_id, msg['rows'], msg['cols'])
+                    elif msg.get('type') == 'ping':
+                        # Respond to ping with pong
+                        await websocket.send_text(json.dumps({'type': 'pong', 'timestamp': time.time()}))
+                except asyncio.TimeoutError:
+                    # Check if connection has been idle too long
+                    if time.time() - last_activity > MAX_IDLE_TIME:
+                        print(f"WebSocket idle timeout after {MAX_IDLE_TIME} seconds")
+                        break
+                    # Send heartbeat if no recent activity
+                    try:
+                        await websocket.send_text(json.dumps({'type': 'heartbeat', 'timestamp': time.time()}))
+                    except Exception:
+                        print("Failed to send heartbeat, connection likely dead")
+                        break
                 except WebSocketDisconnect:
                     print("WebSocket disconnected")
                     break
@@ -112,14 +138,19 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
             loop = asyncio.get_running_loop()
             while True:
                 try:
-                    output = await loop.run_in_executor(
-                        None, shell_socket.recv, 4096
+                    # Add timeout to shell socket read
+                    output = await asyncio.wait_for(
+                        loop.run_in_executor(None, shell_socket.recv, 4096),
+                        timeout=WEBSOCKET_TIMEOUT
                     )
                     if output:
                         await websocket.send_text(output.decode('utf-8', errors='ignore'))
                     else:
                         print("No more output from shell")
                         break
+                except asyncio.TimeoutError:
+                    # Continue the loop, timeout is normal for shell reads
+                    continue
                 except Exception as e:
                     print(f"Error in forward_shell_to_client: {e}")
                     break

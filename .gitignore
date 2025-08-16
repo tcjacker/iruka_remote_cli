@@ -54,3 +54,4 @@ secrets/
 # Logs
 logs/
 *.log
+/backend/data/

@@ -181,11 +181,24 @@ EOF
         tail -f /dev/null
         """
         try:
+            # Prepare volumes for Claude session persistence
+            volumes = {}
+            if ai_tool == "claude":
+                # Create directory for Claude sessions if it doesn't exist
+                import os
+                claude_session_dir = f"data/claude_sessions/{container_name}"
+                os.makedirs(claude_session_dir, exist_ok=True)
+                volumes[os.path.abspath(claude_session_dir)] = {
+                    'bind': '/root/.claude/projects/-workspace',
+                    'mode': 'rw'
+                }
+            
             self.client.containers.run(
                 image=base_image,
                 name=container_name,
                 command=["/bin/sh", "-c", setup_script],
                 environment=env_vars,
+                volumes=volumes,
                 detach=True
             )
         except Exception as e:
@@ -253,7 +266,7 @@ EOF
                 "fi"
             ]
         else:
-            # Build command using a list to avoid quoting issues
+            # Claude with automatic session recovery
             cmd = [
                 "sh", "-c",
                 "if [ -f /etc/environment ]; then . /etc/environment; fi; "
@@ -261,7 +274,34 @@ EOF
                 "while [ ! -f \"/tmp/setup_complete\" ]; do "
                 "  sleep 1; "
                 "done; "
-                f"exec {ai_command}"
+                "WORKSPACE_DIR='/root/.claude/projects/-workspace'; "
+                "cd /workspace; "
+                "if [ -d \"$WORKSPACE_DIR\" ] && [ \"$(ls -A \"$WORKSPACE_DIR\"/*.jsonl 2>/dev/null)\" ]; then "
+                "  VALID_SESSION_ID=\"\"; "
+                "  for file in $(ls -t \"$WORKSPACE_DIR\"/*.jsonl 2>/dev/null); do "
+                "    FIRST_LINE=$(head -n 1 \"$file\" 2>/dev/null); "
+                "    if [ -n \"$FIRST_LINE\" ]; then "
+                "      SESSION_ID=$(echo \"$FIRST_LINE\" | grep -o '\"sessionId\":\"[^\"]*\"' | cut -d'\"' -f4 2>/dev/null); "
+                "      if [ -n \"$SESSION_ID\" ]; then "
+                "        VALID_SESSION_ID=\"$SESSION_ID\"; "
+                "        break; "
+                "      fi; "
+                "    fi; "
+                "  done; "
+                "  if [ -n \"$VALID_SESSION_ID\" ]; then "
+                "    echo \"Initializing Claude in project directory...\"; "
+                "    claude --help > /dev/null 2>&1; "
+                "    echo \"Resuming Claude session: $VALID_SESSION_ID from $(pwd)\"; "
+                "    claude -r \"$VALID_SESSION_ID\" 2>&1 || { "
+                "      echo \"Session resume failed, starting new session\"; "
+                "      exec claude; "
+                "    }; "
+                "  else "
+                "    echo \"No valid sessionId found in any file\"; "
+                "  fi; "
+                "fi; "
+                "echo \"Starting new Claude session\"; "
+                "exec claude"
             ]
         
         exec_instance = self.api_client.exec_create(
