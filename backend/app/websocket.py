@@ -28,10 +28,12 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
         return
     
     # Validate the token
-    from .auth import get_current_user
+    from .auth import verify_token
     try:
-        user = get_current_user(token)
-    except Exception:
+        user = verify_token(token)
+        print(f"WebSocket authentication successful for user: {user.username}")
+    except Exception as e:
+        print(f"Authentication error: {e}")
         await websocket.send_text("[Authentication Error] Invalid token.\r\n")
         await websocket.close()
         return
