@@ -13,9 +13,19 @@ function Workspace() {
   const [selectedEnvId, setSelectedEnvId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const { token } = useAuth();
+  
+  console.log('Workspace component rendered, token:', token ? token.substring(0, 20) + '...' : 'null');
 
   const fetchProjectData = () => {
-    // No need to check for token here, ProtectedRoute already did it.
+    // Check if token exists before making the request
+    if (!token) {
+      console.warn('No auth token available, skipping project data fetch');
+      setIsLoading(false);
+      return;
+    }
+    
+    console.log('Fetching project data with token:', token.substring(0, 20) + '...'); // Log first 20 chars of token for debugging
+    
     setIsLoading(true);
     fetch('http://localhost:8000/api/projects', {
       headers: {
@@ -23,10 +33,12 @@ function Workspace() {
       },
     })
       .then(res => {
+        console.log('Project data fetch response status:', res.status);
         if (!res.ok) throw new Error('Failed to fetch project data');
         return res.json();
       })
       .then(projects => {
+        console.log('Project data fetch successful, projects:', projects);
         const currentProject = projects.find(p => p.name === projectName);
         setProject(currentProject);
         if (currentProject && !currentProject.environments.some(e => e.id === selectedEnvId)) {

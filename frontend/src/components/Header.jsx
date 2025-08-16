@@ -18,27 +18,38 @@ function Header({ onLogout }) {
   const { projectName } = useParams();
   const navigate = useNavigate();
   const { token } = useAuth();
+  
+  console.log('Header component rendered, token:', token ? token.substring(0, 20) + '...' : 'null');
 
   // This function is now ONLY called when the user interacts with the dropdown.
   const fetchProjects = () => {
-    if (!token) return;
+    // Check if token exists before making the request
+    if (!token) {
+      console.warn('No auth token available, skipping projects fetch');
+      return;
+    }
+    
+    console.log('Fetching projects with token:', token.substring(0, 20) + '...'); // Log first 20 chars of token for debugging
+    
     fetch("http://localhost:8000/api/projects", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     })
       .then((res) => {
+        console.log('Projects fetch response status:', res.status);
         if (!res.ok) throw new Error("Failed to fetch projects");
         return res.json();
       })
       .then((data) => {
+        console.log('Projects fetch successful, data:', data);
         setProjects(data);
         // After fetching, ensure the selected value is still valid
         if (projectName && !data.some(p => p.name === projectName)) {
             navigate('/');
         }
       })
-      .catch((err) => console.error(err));
+      .catch((err) => console.error('Projects fetch error:', err));
   };
 
   // This effect now ONLY syncs the URL parameter to the dropdown's display value.

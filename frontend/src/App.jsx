@@ -39,18 +39,22 @@ function App() {
   const { token, login } = useAuth();
 
   const handleLogin = async (username, password) => {
+    console.log('Attempting login for user:', username);
     const response = await fetch('http://localhost:8000/api/auth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ username, password }),
     });
 
+    console.log('Login response status:', response.status);
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('Login failed:', errorData);
       throw new Error(errorData.detail || 'Login failed');
     }
 
     const data = await response.json();
+    console.log('Login successful, token received:', data.access_token.substring(0, 20) + '...');
     login(data.access_token); // Use the login function from context
   };
 

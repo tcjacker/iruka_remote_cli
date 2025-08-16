@@ -78,35 +78,71 @@ class DockerService:
 
     def list_remote_branches(self, repo_url: str, token: Optional[str]) -> list[str]:
         """Lists remote branches without cloning the whole repo."""
-        temp_dir = tempfile.mkdtemp()
+        import subprocess
+        import signal
+        
         try:
-            g = git.cmd.Git(temp_dir)
-            
             url_no_protocol = repo_url.split('//', 1)[-1]
             if token:
                 auth_url = f"https://oauth2:{token}@{url_no_protocol}"
             else:
                 auth_url = f"https://{url_no_protocol}"
 
-            output = g.ls_remote('--heads', auth_url)
+            # Use subprocess with timeout for better performance
+            try:
+                # Set a 10-second timeout to prevent hanging
+                result = subprocess.run(
+                    ['git', 'ls-remote', '--heads', auth_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,  # 10-second timeout
+                    check=True
+                )
+                output = result.stdout
+            except subprocess.TimeoutExpired:
+                raise Exception("Request timed out - repository may be slow or unreachable")
+            except subprocess.CalledProcessError as e:
+                raise Exception(f"Failed to fetch remote branches: {e.stderr or str(e)}")
+            except Exception as e:
+                raise Exception(f"Failed to fetch remote branches: {str(e)}")
             
-            branches = [line.split('\t')[1].replace('refs/heads/', '') for line in output.splitlines()]
-            return sorted(branches)
-        finally:
-            shutil.rmtree(temp_dir)
+            if not output.strip():
+                return ['main', 'master']  # Default branches if no output
+                
+            branches = [line.split('\t')[1].replace('refs/heads/', '') for line in output.splitlines() if '\t' in line]
+            return sorted(branches) if branches else ['main', 'master']
+            
+        except Exception as e:
+            # Log the actual error for debugging
+            error_msg = f"Could not fetch remote branches: {str(e)}"
+            print(f"Error: {error_msg}")
+            # Re-raise the exception instead of silently returning default branches
+            # This allows the API to return proper error messages to the frontend
+            raise Exception(error_msg)
 
     def create_and_run_environment(
         self, container_name: str, base_image: str, git_repo_url: str, 
-        env_name: str, env_vars: dict, branch_mode: str, existing_branch: Optional[str]
+        env_name: str, env_vars: dict, branch_mode: str, existing_branch: Optional[str],
+        ai_tool: str = "gemini"
     ):
         setup_script = f"""
         #!/bin/sh
         set -ex
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -y && apt-get install -y curl git
+        
+        # Install Node.js for both tools
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
         apt-get install -y nodejs
-        npm install -g @google/gemini-cli --unsafe-perm=true --allow-root
+        
+        # Install AI tool based on selection
+        if [ "{ai_tool}" = "gemini" ]; then
+            npm install -g @google/gemini-cli --unsafe-perm=true --allow-root
+            agent_name="Gemini Agent"
+        else
+            npm install -g @anthropic-ai/claude-code --unsafe-perm=true --allow-root
+            agent_name="Claude Agent"
+        fi
         
         url_no_protocol=$(echo \"{git_repo_url}\" | sed -e 's|^[^:]*://||')
         
@@ -118,16 +154,27 @@ class DockerService:
         
 git clone "$clone_url" /workspace 2>&1
         cd /workspace
-        git config --global user.name "Gemini Agent"
+        git config --global user.name "$agent_name"
         git config --global user.email "agent@example.com"
+        
+        # If using Google login mode for Gemini, create a script to handle login
+        if [ "{ai_tool}" = "gemini" ] && [ "$GEMINI_USE_GOOGLE_LOGIN" = "true" ]; then
+            cat > /workspace/gemini-login.sh << 'EOF'
+#!/bin/bash
+echo "Google Login Mode: Run 'gemini login' to authenticate with your Google account"
+EOF
+            chmod +x /workspace/gemini-login.sh
+        fi
         
         if [ \"{branch_mode}\" = \"new\" ]; then
             branch_name="feature/{env_name}"
             git checkout -b "$branch_name"
             git push --set-upstream origin "$branch_name"
         else
-            git checkout \"{existing_branch}\"
-            git branch --set-upstream-to=origin/\"{existing_branch}\" \"{existing_branch}\"
+            # For existing branch, fetch all branches first and then checkout
+            git fetch origin
+            # Try to checkout the branch, creating local branch if it doesn't exist
+            git checkout -B "{existing_branch}" origin/"{existing_branch}"
         fi
         
         touch /tmp/setup_complete
@@ -158,31 +205,68 @@ git clone "$clone_url" /workspace 2>&1
                 container.stop()
         except docker.errors.NotFound: pass
 
+    def start_container(self, container_name: str):
+        try:
+            container = self.client.containers.get(container_name)
+            if container.status != "running":
+                container.start()
+        except docker.errors.NotFound:
+            raise ValueError(f"Container {container_name} not found and cannot be started.")
+
     def remove_container(self, container_name: str):
         try:
             container = self.client.containers.get(container_name)
             container.remove(force=True)
         except docker.errors.NotFound: pass
 
-    def setup_shell_session(self, container_name: str):
+    def setup_shell_session(self, container_name: str, ai_tool: str = "gemini"):
         container = self.client.containers.get(container_name)
         if container.status != "running":
             raise RuntimeError(f"Container {container_name} is not running.")
         
-        robust_start_command = """
-        sh -c '
-          if [ -f /etc/environment ]; then . /etc/environment; fi
-          export TERM=xterm-256color
-          while [ ! -f "/tmp/setup_complete" ]; do
-            sleep 1
-          done
-          gemini
-        '
-        """
+        # Check if the setup is complete by checking for the setup_complete file
+        try:
+            result = container.exec_run("test -f /tmp/setup_complete")
+            if result.exit_code != 0:
+                raise RuntimeError("Environment is still initializing. Please wait for setup to complete.")
+        except:
+            raise RuntimeError("Environment is still initializing. Please wait for setup to complete.")
+        
+        ai_command = "claude" if ai_tool == "claude" else "gemini"
+        
+        # For Gemini with Google login, we need to handle the login process differently
+        if ai_tool == "gemini":
+            # Build command using a list to avoid quoting issues
+            cmd = [
+                "sh", "-c",
+                "if [ -f /etc/environment ]; then . /etc/environment; fi; "
+                "export TERM=xterm-256color; "
+                "while [ ! -f \"/tmp/setup_complete\" ]; do "
+                "  sleep 1; "
+                "done; "
+                "if [ \"$GEMINI_USE_GOOGLE_LOGIN\" = \"true\" ]; then "
+                "  echo \"Google Login Mode: Run 'gemini login' to authenticate with your Google account\"; "
+                "  echo \"After login, run 'gemini' to start the CLI\"; "
+                "  exec /bin/bash; "
+                "else "
+                "  exec gemini; "
+                "fi"
+            ]
+        else:
+            # Build command using a list to avoid quoting issues
+            cmd = [
+                "sh", "-c",
+                "if [ -f /etc/environment ]; then . /etc/environment; fi; "
+                "export TERM=xterm-256color; "
+                "while [ ! -f \"/tmp/setup_complete\" ]; do "
+                "  sleep 1; "
+                "done; "
+                f"exec {ai_command}"
+            ]
         
         exec_instance = self.api_client.exec_create(
             container.id,
-            robust_start_command,
+            cmd,
             stdin=True,
             tty=True,
             workdir="/workspace"

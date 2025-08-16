@@ -34,6 +34,8 @@ class Project(BaseModel):
     git_repo: str
     git_token: Optional[str] = None
     gemini_token: Optional[str] = None
+    anthropic_auth_token: Optional[str] = None
+    anthropic_base_url: Optional[str] = None
     environments: List[Environment] = []
 
 class ProjectCreate(BaseModel):
@@ -41,16 +43,23 @@ class ProjectCreate(BaseModel):
     git_repo: str
     git_token: Optional[str] = None
     gemini_token: Optional[str] = None
+    anthropic_auth_token: Optional[str] = None
+    anthropic_base_url: Optional[str] = None
 
 class EnvironmentCreate(BaseModel):
     name: str
     base_image: str
     branch_mode: str
     existing_branch: Optional[str] = None
+    ai_tool: str = "gemini"  # "gemini" or "claude"
+    gemini_use_google_login: bool = False  # Whether to use Google login instead of API key
 
 class ProjectSettingsUpdate(BaseModel):
     gemini_token: Optional[str] = None
     git_token: Optional[str] = None
+    git_repo: Optional[str] = None
+    anthropic_auth_token: Optional[str] = None
+    anthropic_base_url: Optional[str] = None
 
 # --- Authentication Endpoints ---
 
@@ -136,23 +145,61 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
     if not proj:
         raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
 
+    # Validate that tokens are set before creating an environment
+    if env_data.ai_tool == "gemini":
+        # Check if using Google login mode
+        use_google_login = getattr(env_data, "gemini_use_google_login", False)
+        if not use_google_login:
+            # Standard mode requires gemini_token
+            if not proj.get("gemini_token") or not proj.get("git_token"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Project is missing Gemini API Key or Git Access Token. Please set them in the project settings.",
+                )
+        else:
+            # Google login mode only requires git_token
+            if not proj.get("git_token"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Project is missing Git Access Token. Please set it in the project settings.",
+                )
+    elif env_data.ai_tool == "claude":
+        if not proj.get("anthropic_auth_token") or not proj.get("git_token"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project is missing Anthropic Auth Token or Git Access Token. Please set them in the project settings.",
+            )
+
     if any(e["id"] == env_data.name for e in proj.get("environments", [])):
         raise HTTPException(status_code=400, detail=f"Environment '{env_data.name}' already exists.")
 
-    new_env = Environment(id=env_data.name, base_image=env_data.base_image)
-    proj.setdefault("environments", []).append(new_env.dict())
+    new_env = Environment(id=env_data.name, base_image=env_data.base_image, status="pending")
+    # Add ai_tool to the environment data
+    env_dict = new_env.dict()
+    env_dict["ai_tool"] = env_data.ai_tool
+    proj.setdefault("environments", []).append(env_dict)
     project_service.update_project(project_name, proj)
 
     try:
         # Sanitize names for Docker compatibility
         sane_project_name = sanitize_for_docker(project_name)
         sane_env_name = sanitize_for_docker(env_data.name)
-        container_name = f"gemini-env-{sane_project_name}-{sane_env_name}"
+        tool_prefix = "claude" if env_data.ai_tool == "claude" else "gemini"
+        container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_name}"
         
         container_env_vars = {
-            "GEMINI_API_KEY": proj.get("gemini_token", ""),
             "GIT_TOKEN": proj.get("git_token", "")
         }
+        
+        # Add AI tool specific environment variables
+        if env_data.ai_tool == "gemini":
+            use_google_login = getattr(env_data, "gemini_use_google_login", False)
+            container_env_vars["GEMINI_USE_GOOGLE_LOGIN"] = str(use_google_login).lower()
+            if not use_google_login:
+                container_env_vars["GEMINI_API_KEY"] = proj.get("gemini_token", "")
+        elif env_data.ai_tool == "claude":
+            container_env_vars["ANTHROPIC_AUTH_TOKEN"] = proj.get("anthropic_auth_token", "")
+            container_env_vars["ANTHROPIC_BASE_URL"] = proj.get("anthropic_base_url", "")
         
         docker_service.create_and_run_environment(
             container_name=container_name, 
@@ -161,17 +208,13 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
             env_name=env_data.name, # Pass original name for git branch
             env_vars=container_env_vars,
             branch_mode=env_data.branch_mode,
-            existing_branch=env_data.existing_branch
+            existing_branch=env_data.existing_branch,
+            ai_tool=env_data.ai_tool
         )
         
-        # Update status after successful creation
-        for e in proj["environments"]:
-            if e["id"] == env_data.name:
-                e["status"] = "running"
-                break
-        project_service.update_project(project_name, proj)
-        
-        new_env.status = "running"
+        # Don't update status to "running" immediately, it will be updated when setup is complete
+        # The /tmp/setup_complete file will indicate when the environment is ready
+        new_env.status = "pending"
         return new_env
 
     except Exception as e:
@@ -193,7 +236,15 @@ async def stop_environment(project_name: str, env_id: str, current_user: User = 
 
     sane_project_name = sanitize_for_docker(project_name)
     sane_env_id = sanitize_for_docker(env_id)
-    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    # Find the environment to get the ai_tool
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+    container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
     
     docker_service.stop_container(container_name)
     
@@ -205,6 +256,40 @@ async def stop_environment(project_name: str, env_id: str, current_user: User = 
     
     return {"message": "Environment stopped."}
 
+
+@api_router.post("/projects/{project_name}/environments/{env_id}/start", status_code=200)
+async def start_environment(project_name: str, env_id: str, current_user: User = Depends(get_current_user)):
+    proj = project_service.get_project(project_name)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    # Find the environment to get the ai_tool
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+    container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
+    
+    try:
+        docker_service.start_container(container_name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start container: {e}")
+
+    for e in proj.get("environments", []):
+        if e["id"] == env_id:
+            e["status"] = "running"
+            break
+    project_service.update_project(project_name, proj)
+    
+    return {"message": "Environment started."}
+
 @api_router.delete("/projects/{project_name}/environments/{env_id}", status_code=204)
 async def delete_environment(project_name: str, env_id: str, current_user: User = Depends(get_current_user)):
     proj = project_service.get_project(project_name)
@@ -213,7 +298,15 @@ async def delete_environment(project_name: str, env_id: str, current_user: User 
 
     sane_project_name = sanitize_for_docker(project_name)
     sane_env_id = sanitize_for_docker(env_id)
-    container_name = f"gemini-env-{sane_project_name}-{sane_env_id}"
+    # Find the environment to get the ai_tool
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    sane_project_name = sanitize_for_docker(project_name)
+    sane_env_id = sanitize_for_docker(env_id)
+    tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+    container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
     
     docker_service.remove_container(container_name)
     
@@ -221,3 +314,44 @@ async def delete_environment(project_name: str, env_id: str, current_user: User 
     project_service.update_project(project_name, proj)
     
     return
+
+@api_router.get("/projects/{project_name}/environments/{env_id}/status")
+async def get_environment_status(project_name: str, env_id: str, current_user: User = Depends(get_current_user)):
+    proj = project_service.get_project(project_name)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+    
+    env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
+    if not env:
+        raise HTTPException(status_code=404, detail=f"Environment '{env_id}' not found.")
+    
+    # If the environment is pending, check if setup is complete
+    if env.get("status") == "pending":
+        # Construct container name
+        sane_project_name = sanitize_for_docker(project_name)
+        sane_env_id = sanitize_for_docker(env_id)
+        tool_prefix = "claude" if env.get("ai_tool") == "claude" else "gemini"
+        container_name = f"{tool_prefix}-env-{sane_project_name}-{sane_env_id}"
+        
+        # Check if container exists and setup is complete
+        try:
+            container = docker_service.client.containers.get(container_name)
+            if container.status == "running":
+                # Check if setup is complete
+                result = container.exec_run("test -f /tmp/setup_complete")
+                if result.exit_code == 0:
+                    # Update status to running
+                    for e in proj["environments"]:
+                        if e["id"] == env_id:
+                            e["status"] = "running"
+                            break
+                    project_service.update_project(project_name, proj)
+                    return {"status": "running"}
+                else:
+                    return {"status": "pending"}
+            else:
+                return {"status": "pending"}
+        except:
+            return {"status": "pending"}
+    
+    return {"status": env.get("status", "unknown")}
