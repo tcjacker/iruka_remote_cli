@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 function ProjectSettings({ project, onDataChange }) {
   const [geminiToken, setGeminiToken] = useState(project.gemini_token || '');
   const [gitToken, setGitToken] = useState(project.git_token || '');
+  const [gitRepo, setGitRepo] = useState(project.git_repo || '');
   const [anthropicAuthToken, setAnthropicAuthToken] = useState(project.anthropic_auth_token || '');
   const [anthropicBaseUrl, setAnthropicBaseUrl] = useState(project.anthropic_base_url || '');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -20,6 +21,7 @@ function ProjectSettings({ project, onDataChange }) {
     const settings = {
         gemini_token: geminiToken,
         git_token: gitToken,
+        git_repo: gitRepo,
         anthropic_auth_token: anthropicAuthToken,
         anthropic_base_url: anthropicBaseUrl
     };
@@ -43,6 +45,20 @@ function ProjectSettings({ project, onDataChange }) {
   return (
     <Box>
       <Typography variant="subtitle1" gutterBottom>
+        Project Configuration
+      </Typography>
+      <TextField
+        label="Git Repository URL"
+        type="text"
+        fullWidth
+        margin="normal"
+        variant="outlined"
+        value={gitRepo}
+        onChange={(e) => setGitRepo(e.target.value)}
+        helperText="Git repository URL (e.g., github.com/user/repo). Used for creating environments."
+        sx={{ input: { color: 'white' }, label: { color: 'gray' } }}
+      />
+      <Typography variant="subtitle1" gutterBottom sx={{ mt: 3 }}>
         Authentication Tokens
       </Typography>
       <TextField
@@ -86,7 +102,7 @@ function ProjectSettings({ project, onDataChange }) {
         variant="outlined"
         value={gitToken}
         onChange={(e) => setGitToken(e.target.value)}
-        helperText="Used for cloning private repositories. Injected as GIT_TOKEN."
+        helperText="Used for accessing private repositories. Required if the Git repository is private."
         sx={{ input: { color: 'white' }, label: { color: 'gray' } }}
       />
       <Button variant="contained" onClick={handleSave}>

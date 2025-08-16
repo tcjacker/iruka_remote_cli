@@ -57,6 +57,7 @@ class EnvironmentCreate(BaseModel):
 class ProjectSettingsUpdate(BaseModel):
     gemini_token: Optional[str] = None
     git_token: Optional[str] = None
+    git_repo: Optional[str] = None
     anthropic_auth_token: Optional[str] = None
     anthropic_base_url: Optional[str] = None
 

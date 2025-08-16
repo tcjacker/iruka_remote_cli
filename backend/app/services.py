@@ -78,31 +78,47 @@ class DockerService:
 
     def list_remote_branches(self, repo_url: str, token: Optional[str]) -> list[str]:
         """Lists remote branches without cloning the whole repo."""
-        temp_dir = tempfile.mkdtemp()
+        import subprocess
+        import signal
+        
         try:
-            g = git.cmd.Git(temp_dir)
-            
             url_no_protocol = repo_url.split('//', 1)[-1]
             if token:
                 auth_url = f"https://oauth2:{token}@{url_no_protocol}"
             else:
                 auth_url = f"https://{url_no_protocol}"
 
-            # Add error handling
+            # Use subprocess with timeout for better performance
             try:
-                output = g.ls_remote('--heads', auth_url)
+                # Set a 10-second timeout to prevent hanging
+                result = subprocess.run(
+                    ['git', 'ls-remote', '--heads', auth_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,  # 10-second timeout
+                    check=True
+                )
+                output = result.stdout
+            except subprocess.TimeoutExpired:
+                raise Exception("Request timed out - repository may be slow or unreachable")
+            except subprocess.CalledProcessError as e:
+                raise Exception(f"Failed to fetch remote branches: {e.stderr or str(e)}")
             except Exception as e:
                 raise Exception(f"Failed to fetch remote branches: {str(e)}")
             
-            branches = [line.split('\t')[1].replace('refs/heads/', '') for line in output.splitlines()]
-            return sorted(branches)
+            if not output.strip():
+                return ['main', 'master']  # Default branches if no output
+                
+            branches = [line.split('\t')[1].replace('refs/heads/', '') for line in output.splitlines() if '\t' in line]
+            return sorted(branches) if branches else ['main', 'master']
+            
         except Exception as e:
-            raise e
-        finally:
-            try:
-                shutil.rmtree(temp_dir)
-            except:
-                pass
+            # Log the actual error for debugging
+            error_msg = f"Could not fetch remote branches: {str(e)}"
+            print(f"Error: {error_msg}")
+            # Re-raise the exception instead of silently returning default branches
+            # This allows the API to return proper error messages to the frontend
+            raise Exception(error_msg)
 
     def create_and_run_environment(
         self, container_name: str, base_image: str, git_repo_url: str, 

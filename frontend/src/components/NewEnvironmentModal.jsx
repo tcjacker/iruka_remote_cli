@@ -17,6 +17,9 @@ const style = {
   p: 4,
 };
 
+// Cache for branch data to avoid repeated API calls
+const branchCache = new Map();
+
 function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
   const [envName, setEnvName] = useState('');
   const [baseImage, setBaseImage] = useState('');
@@ -52,25 +55,57 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
 
   useEffect(() => {
     if (branchMode === 'existing' && open && token) {
-      setIsLoadingBranches(true);
       const repoUrl = encodeURIComponent(project.git_repo);
       const gitApiToken = project.git_token || '';
+      const cacheKey = `${project.git_repo}:${gitApiToken}`;
       
-      // Fetch remote branches with auth
+      // Check cache first
+      if (branchCache.has(cacheKey)) {
+        const cachedBranches = branchCache.get(cacheKey);
+        setRemoteBranches(cachedBranches);
+        if (cachedBranches.length > 0) setExistingBranch(cachedBranches[0]);
+        return;
+      }
+      
+      setIsLoadingBranches(true);
+      
+      // Add timeout to the fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+      
+      // Fetch remote branches with auth and timeout
       fetch(`http://localhost:8000/api/git/branches?repo_url=${repoUrl}&token=${gitApiToken}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       })
         .then(res => {
+            clearTimeout(timeoutId);
             if (!res.ok) throw new Error('Failed to fetch branches. Check repo URL and token.');
             return res.json();
         })
         .then(data => {
+            // Cache the result for 5 minutes
+            branchCache.set(cacheKey, data);
+            setTimeout(() => branchCache.delete(cacheKey), 5 * 60 * 1000);
+            
             setRemoteBranches(data);
             if (data.length > 0) setExistingBranch(data[0]);
         })
         .catch(err => {
-            alert(`Error: ${err.message}`);
-            console.error("Failed to fetch branches:", err)
+            clearTimeout(timeoutId);
+            console.error("Failed to fetch branches:", err);
+            
+            if (err.name === 'AbortError') {
+              alert('Request timed out. Please check your network connection and try again.');
+            } else {
+              // Show the actual error message from backend
+              alert(`Error fetching branches: ${err.message}\n\nPlease check:\n- Git repository URL is correct\n- Git token has proper permissions\n- Repository is accessible`);
+            }
+            
+            // Only set default branches as a last resort
+            const defaultBranches = ['main', 'master'];
+            setRemoteBranches(defaultBranches);
+            setExistingBranch(defaultBranches[0]);
         })
         .finally(() => setIsLoadingBranches(false));
     }
