@@ -88,12 +88,9 @@ class DockerService:
             else:
                 auth_url = f"https://{url_no_protocol}"
 
-            # Add timeout and error handling
-            import subprocess
+            # Add error handling
             try:
-                output = g.ls_remote('--heads', auth_url, timeout=30)
-            except subprocess.TimeoutExpired:
-                raise Exception("Git command timed out. Please check your network connection or repository URL.")
+                output = g.ls_remote('--heads', auth_url)
             except Exception as e:
                 raise Exception(f"Failed to fetch remote branches: {str(e)}")
             
