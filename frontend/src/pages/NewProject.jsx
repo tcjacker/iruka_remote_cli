@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, TextField, Button, Typography, Paper } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 
 function NewProject() {
   const [name, setName] = useState('');
@@ -8,6 +9,7 @@ function NewProject() {
   const [gitToken, setGitToken] = useState('');
   const [geminiToken, setGeminiToken] = useState('');
   const navigate = useNavigate();
+  const { token } = useAuth(); // Get the auth token
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -15,19 +17,25 @@ function NewProject() {
 
     fetch('http://localhost:8000/api/projects', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`, // Add the Authorization header
+      },
       body: JSON.stringify(projectData),
     })
-      .then(response => response.json())
+      .then(response => {
+        if (!response.ok) {
+          // Handle non-2xx responses
+          return response.json().then(err => { throw new Error(err.detail || 'Failed to create project') });
+        }
+        return response.json();
+      })
       .then(data => {
         if (data.name) {
           navigate(`/project/${data.name}`);
-        } else {
-          // Handle error
-          console.error('Error creating project:', data);
         }
       })
-      .catch(error => console.error('Error creating project:', error));
+      .catch(error => console.error('Error creating project:', error.message));
   };
 
   return (

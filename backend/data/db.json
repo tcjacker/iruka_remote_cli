@@ -1,0 +1,23 @@
+{
+  "users": [
+    {
+      "username": "tcjack",
+      "hashed_password": "$2b$12$2Jcq/FMDso/ggaNnwZq50O1Ja1RBBaz5t0mDYDLc8eTVvex4QVKYS"
+    }
+  ],
+  "projects": [
+    {
+      "name": "\u91d1\u878d\u5de5\u5177",
+      "git_repo": "https://github.com/tcjacker/finance_doc_agent.git",
+      "git_token": "",
+      "gemini_token": "",
+      "environments": [
+        {
+          "id": "22",
+          "base_image": "iruka-agent:latest",
+          "status": "running"
+        }
+      ]
+    }
+  ]
+}
