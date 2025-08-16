@@ -114,15 +114,6 @@ class DockerService:
         if [ "{ai_tool}" = "gemini" ]; then
             npm install -g @google/gemini-cli --unsafe-perm=true --allow-root
             agent_name="Gemini Agent"
-            
-            # If using Google login mode, create a script to handle login
-            if [ "$GEMINI_USE_GOOGLE_LOGIN" = "true" ]; then
-                cat > /workspace/gemini-login.sh << 'EOF'
-#!/bin/bash
-echo "Google Login Mode: Run 'gemini login' to authenticate with your Google account"
-EOF
-                chmod +x /workspace/gemini-login.sh
-            fi
         else
             npm install -g @anthropic-ai/claude-code --unsafe-perm=true --allow-root
             agent_name="Claude Agent"
@@ -140,6 +131,15 @@ git clone "$clone_url" /workspace 2>&1
         cd /workspace
         git config --global user.name "$agent_name"
         git config --global user.email "agent@example.com"
+        
+        # If using Google login mode for Gemini, create a script to handle login
+        if [ "{ai_tool}" = "gemini" ] && [ "$GEMINI_USE_GOOGLE_LOGIN" = "true" ]; then
+            cat > /workspace/gemini-login.sh << 'EOF'
+#!/bin/bash
+echo "Google Login Mode: Run 'gemini login' to authenticate with your Google account"
+EOF
+            chmod +x /workspace/gemini-login.sh
+        fi
         
         if [ \"{branch_mode}\" = \"new\" ]; then
             branch_name="feature/{env_name}"
