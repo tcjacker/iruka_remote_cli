@@ -114,6 +114,15 @@ class DockerService:
         if [ "{ai_tool}" = "gemini" ]; then
             npm install -g @google/gemini-cli --unsafe-perm=true --allow-root
             agent_name="Gemini Agent"
+            
+            # If using Google login mode, create a script to handle login
+            if [ "$GEMINI_USE_GOOGLE_LOGIN" = "true" ]; then
+                cat > /workspace/gemini-login.sh << 'EOF'
+#!/bin/bash
+echo "Google Login Mode: Run 'gemini login' to authenticate with your Google account"
+EOF
+                chmod +x /workspace/gemini-login.sh
+            fi
         else
             npm install -g @anthropic-ai/claude-code --unsafe-perm=true --allow-root
             agent_name="Claude Agent"
@@ -198,16 +207,37 @@ git clone "$clone_url" /workspace 2>&1
         
         ai_command = "claude" if ai_tool == "claude" else "gemini"
         
-        robust_start_command = f"""
-        sh -c '
-          if [ -f /etc/environment ]; then . /etc/environment; fi
-          export TERM=xterm-256color
-          while [ ! -f "/tmp/setup_complete" ]; do
-            sleep 1
-          done
-          {ai_command}
-        '
-        """
+        # For Gemini with Google login, we need to handle the login process differently
+        if ai_tool == "gemini":
+            robust_start_command = f"""
+            sh -c '
+              if [ -f /etc/environment ]; then . /etc/environment; fi
+              export TERM=xterm-256color
+              while [ ! -f "/tmp/setup_complete" ]; do
+                sleep 1
+              done
+              
+              # Check if using Google login mode
+              if [ "$GEMINI_USE_GOOGLE_LOGIN" = "true" ]; then
+                echo "Google Login Mode: Run \\'gemini login\\' to authenticate with your Google account"
+                echo "After login, run \\'gemini\\' to start the CLI"
+                exec /bin/bash
+              else
+                exec gemini
+              fi
+            '
+            """
+        else:
+            robust_start_command = f"""
+            sh -c '
+              if [ -f /etc/environment ]; then . /etc/environment; fi
+              export TERM=xterm-256color
+              while [ ! -f "/tmp/setup_complete" ]; do
+                sleep 1
+              done
+              {ai_command}
+            '
+            """
         
         exec_instance = self.api_client.exec_create(
             container.id,

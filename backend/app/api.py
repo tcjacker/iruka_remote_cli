@@ -52,6 +52,7 @@ class EnvironmentCreate(BaseModel):
     branch_mode: str
     existing_branch: Optional[str] = None
     ai_tool: str = "gemini"  # "gemini" or "claude"
+    gemini_use_google_login: bool = False  # Whether to use Google login instead of API key
 
 class ProjectSettingsUpdate(BaseModel):
     gemini_token: Optional[str] = None
@@ -145,11 +146,22 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
 
     # Validate that tokens are set before creating an environment
     if env_data.ai_tool == "gemini":
-        if not proj.get("gemini_token") or not proj.get("git_token"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Project is missing Gemini API Key or Git Access Token. Please set them in the project settings.",
-            )
+        # Check if using Google login mode
+        use_google_login = getattr(env_data, "gemini_use_google_login", False)
+        if not use_google_login:
+            # Standard mode requires gemini_token
+            if not proj.get("gemini_token") or not proj.get("git_token"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Project is missing Gemini API Key or Git Access Token. Please set them in the project settings.",
+                )
+        else:
+            # Google login mode only requires git_token
+            if not proj.get("git_token"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Project is missing Git Access Token. Please set it in the project settings.",
+                )
     elif env_data.ai_tool == "claude":
         if not proj.get("anthropic_auth_token") or not proj.get("git_token"):
             raise HTTPException(
@@ -177,7 +189,10 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
         
         # Add AI tool specific environment variables
         if env_data.ai_tool == "gemini":
-            container_env_vars["GEMINI_API_KEY"] = proj.get("gemini_token", "")
+            use_google_login = getattr(env_data, "gemini_use_google_login", False)
+            container_env_vars["GEMINI_USE_GOOGLE_LOGIN"] = str(use_google_login).lower()
+            if not use_google_login:
+                container_env_vars["GEMINI_API_KEY"] = proj.get("gemini_token", "")
         elif env_data.ai_tool == "claude":
             container_env_vars["ANTHROPIC_AUTH_TOKEN"] = proj.get("anthropic_auth_token", "")
             container_env_vars["ANTHROPIC_BASE_URL"] = proj.get("anthropic_base_url", "")

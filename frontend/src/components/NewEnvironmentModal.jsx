@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Modal, Box, Typography, TextField, Button, Select, MenuItem, FormControl, 
-    InputLabel, RadioGroup, FormControlLabel, Radio, CircularProgress 
+    InputLabel, RadioGroup, FormControlLabel, Radio, CircularProgress, Checkbox 
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 
@@ -26,6 +26,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
   const [remoteBranches, setRemoteBranches] = useState([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [aiTool, setAiTool] = useState('gemini'); // "gemini" or "claude"
+  const [geminiUseGoogleLogin, setGeminiUseGoogleLogin] = useState(false); // Whether to use Google login for Gemini
   const { token } = useAuth(); // Get the auth token
 
   useEffect(() => {
@@ -37,6 +38,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       setExistingBranch('');
       setRemoteBranches([]);
       setAiTool('gemini');
+      setGeminiUseGoogleLogin(false);
       
       // Fetch docker images with auth
       fetch('http://localhost:8000/api/docker-images', {
@@ -85,7 +87,8 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       base_image: baseImage,
       branch_mode: branchMode,
       existing_branch: branchMode === 'existing' ? existingBranch : null,
-      ai_tool: aiTool
+      ai_tool: aiTool,
+      gemini_use_google_login: aiTool === 'gemini' ? geminiUseGoogleLogin : false
     };
 
     // Create environment with auth
@@ -138,6 +141,18 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
             <FormControlLabel value="claude" control={<Radio />} label="Claude Code" />
           </RadioGroup>
         </FormControl>
+        
+        {aiTool === 'gemini' && (
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={geminiUseGoogleLogin}
+                onChange={(e) => setGeminiUseGoogleLogin(e.target.checked)}
+              />
+            }
+            label="Use Google Login for Gemini CLI (instead of API Key)"
+          />
+        )}
 
         {branchMode === 'existing' && (
           <FormControl fullWidth margin="normal" required disabled={isLoadingBranches}>
