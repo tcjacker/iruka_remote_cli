@@ -209,39 +209,37 @@ EOF
         
         # For Gemini with Google login, we need to handle the login process differently
         if ai_tool == "gemini":
-            robust_start_command = (
-                "sh -c '"
-                "  if [ -f /etc/environment ]; then . /etc/environment; fi; "
-                "  export TERM=xterm-256color; "
-                "  while [ ! -f \"/tmp/setup_complete\" ]; do "
-                "    sleep 1; "
-                "  done; "
-                "  "
-                "  # Check if using Google login mode; "
-                "  if [ \"$GEMINI_USE_GOOGLE_LOGIN\" = \"true\" ]; then "
-                "    echo \"Google Login Mode: Run \\'gemini login\\' to authenticate with your Google account\"; "
-                "    echo \"After login, run \\'gemini\\' to start the CLI\"; "
-                "    exec /bin/bash; "
-                "  else "
-                "    exec gemini; "
-                "  fi; "
-                "'"
-            )
+            # Build command using a list to avoid quoting issues
+            cmd = [
+                "sh", "-c",
+                "if [ -f /etc/environment ]; then . /etc/environment; fi; "
+                "export TERM=xterm-256color; "
+                "while [ ! -f \"/tmp/setup_complete\" ]; do "
+                "  sleep 1; "
+                "done; "
+                "if [ \"$GEMINI_USE_GOOGLE_LOGIN\" = \"true\" ]; then "
+                "  echo \"Google Login Mode: Run 'gemini login' to authenticate with your Google account\"; "
+                "  echo \"After login, run 'gemini' to start the CLI\"; "
+                "  exec /bin/bash; "
+                "else "
+                "  exec gemini; "
+                "fi"
+            ]
         else:
-            robust_start_command = (
-                "sh -c '"
-                "  if [ -f /etc/environment ]; then . /etc/environment; fi; "
-                "  export TERM=xterm-256color; "
-                "  while [ ! -f \"/tmp/setup_complete\" ]; do "
-                "    sleep 1; "
-                "  done; "
-                f"  {ai_command}; "
-                "'"
-            )
+            # Build command using a list to avoid quoting issues
+            cmd = [
+                "sh", "-c",
+                "if [ -f /etc/environment ]; then . /etc/environment; fi; "
+                "export TERM=xterm-256color; "
+                "while [ ! -f \"/tmp/setup_complete\" ]; do "
+                "  sleep 1; "
+                "done; "
+                f"exec {ai_command}"
+            ]
         
         exec_instance = self.api_client.exec_create(
             container.id,
-            robust_start_command,
+            cmd,
             stdin=True,
             tty=True,
             workdir="/workspace"
