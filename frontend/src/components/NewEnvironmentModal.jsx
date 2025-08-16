@@ -25,6 +25,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
   const [existingBranch, setExistingBranch] = useState('');
   const [remoteBranches, setRemoteBranches] = useState([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [aiTool, setAiTool] = useState('gemini'); // "gemini" or "claude"
   const { token } = useAuth(); // Get the auth token
 
   useEffect(() => {
@@ -35,6 +36,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       setBranchMode('new');
       setExistingBranch('');
       setRemoteBranches([]);
+      setAiTool('gemini');
       
       // Fetch docker images with auth
       fetch('http://localhost:8000/api/docker-images', {
@@ -82,7 +84,8 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       name: envName, 
       base_image: baseImage,
       branch_mode: branchMode,
-      existing_branch: branchMode === 'existing' ? existingBranch : null
+      existing_branch: branchMode === 'existing' ? existingBranch : null,
+      ai_tool: aiTool
     };
 
     // Create environment with auth
@@ -94,8 +97,11 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       },
       body: JSON.stringify(body),
     })
-    .then(res => {
-      if (!res.ok) throw new Error('Failed to create environment');
+    .then(async res => {
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || 'Failed to create environment');
+      }
       return res.json();
     })
     .then(() => {
@@ -123,6 +129,13 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
           <RadioGroup row value={branchMode} onChange={(e) => setBranchMode(e.target.value)}>
             <FormControlLabel value="new" control={<Radio />} label="Create new branch" />
             <FormControlLabel value="existing" control={<Radio />} label="Use existing branch" />
+          </RadioGroup>
+        </FormControl>
+        
+        <FormControl component="fieldset" margin="normal">
+          <RadioGroup row value={aiTool} onChange={(e) => setAiTool(e.target.value)}>
+            <FormControlLabel value="gemini" control={<Radio />} label="Gemini CLI" />
+            <FormControlLabel value="claude" control={<Radio />} label="Claude Code" />
           </RadioGroup>
         </FormControl>
 

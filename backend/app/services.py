@@ -97,16 +97,27 @@ class DockerService:
 
     def create_and_run_environment(
         self, container_name: str, base_image: str, git_repo_url: str, 
-        env_name: str, env_vars: dict, branch_mode: str, existing_branch: Optional[str]
+        env_name: str, env_vars: dict, branch_mode: str, existing_branch: Optional[str],
+        ai_tool: str = "gemini"
     ):
         setup_script = f"""
         #!/bin/sh
         set -ex
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -y && apt-get install -y curl git
+        
+        # Install Node.js for both tools
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
         apt-get install -y nodejs
-        npm install -g @google/gemini-cli --unsafe-perm=true --allow-root
+        
+        # Install AI tool based on selection
+        if [ "{ai_tool}" = "gemini" ]; then
+            npm install -g @google/gemini-cli --unsafe-perm=true --allow-root
+            agent_name="Gemini Agent"
+        else
+            npm install -g @anthropic-ai/claude-code --unsafe-perm=true --allow-root
+            agent_name="Claude Agent"
+        fi
         
         url_no_protocol=$(echo \"{git_repo_url}\" | sed -e 's|^[^:]*://||')
         
@@ -118,7 +129,7 @@ class DockerService:
         
 git clone "$clone_url" /workspace 2>&1
         cd /workspace
-        git config --global user.name "Gemini Agent"
+        git config --global user.name "$agent_name"
         git config --global user.email "agent@example.com"
         
         if [ \"{branch_mode}\" = \"new\" ]; then
@@ -158,25 +169,35 @@ git clone "$clone_url" /workspace 2>&1
                 container.stop()
         except docker.errors.NotFound: pass
 
+    def start_container(self, container_name: str):
+        try:
+            container = self.client.containers.get(container_name)
+            if container.status != "running":
+                container.start()
+        except docker.errors.NotFound:
+            raise ValueError(f"Container {container_name} not found and cannot be started.")
+
     def remove_container(self, container_name: str):
         try:
             container = self.client.containers.get(container_name)
             container.remove(force=True)
         except docker.errors.NotFound: pass
 
-    def setup_shell_session(self, container_name: str):
+    def setup_shell_session(self, container_name: str, ai_tool: str = "gemini"):
         container = self.client.containers.get(container_name)
         if container.status != "running":
             raise RuntimeError(f"Container {container_name} is not running.")
         
-        robust_start_command = """
+        ai_command = "claude" if ai_tool == "claude" else "gemini"
+        
+        robust_start_command = f"""
         sh -c '
           if [ -f /etc/environment ]; then . /etc/environment; fi
           export TERM=xterm-256color
           while [ ! -f "/tmp/setup_complete" ]; do
             sleep 1
           done
-          gemini
+          {ai_command}
         '
         """
         
