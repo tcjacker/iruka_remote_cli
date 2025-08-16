@@ -15,7 +15,13 @@ function Workspace() {
   const { token } = useAuth();
 
   const fetchProjectData = () => {
-    // No need to check for token here, ProtectedRoute already did it.
+    // Check if token exists before making the request
+    if (!token) {
+      console.warn('No auth token available, skipping project data fetch');
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     fetch('http://localhost:8000/api/projects', {
       headers: {

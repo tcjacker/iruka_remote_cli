@@ -21,7 +21,12 @@ function Header({ onLogout }) {
 
   // This function is now ONLY called when the user interacts with the dropdown.
   const fetchProjects = () => {
-    if (!token) return;
+    // Check if token exists before making the request
+    if (!token) {
+      console.warn('No auth token available, skipping projects fetch');
+      return;
+    }
+    
     fetch("http://localhost:8000/api/projects", {
       headers: {
         Authorization: `Bearer ${token}`,
