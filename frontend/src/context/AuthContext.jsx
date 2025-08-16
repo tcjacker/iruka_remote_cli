@@ -16,18 +16,23 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const savedToken = localStorage.getItem('authToken');
     if (savedToken) {
+      console.log('Loaded token from localStorage:', savedToken.substring(0, 20) + '...');
       setToken(savedToken);
+    } else {
+      console.log('No token found in localStorage');
     }
   }, []);
 
   // Function to update the token
   const login = (newToken) => {
+    console.log('Setting new token:', newToken.substring(0, 20) + '...');
     setToken(newToken);
     localStorage.setItem('authToken', newToken);
   };
 
   // Function to clear the token
   const logout = () => {
+    console.log('Clearing token');
     setToken(null);
     localStorage.removeItem('authToken');
   };
