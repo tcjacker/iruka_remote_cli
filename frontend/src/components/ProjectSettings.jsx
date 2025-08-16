@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 function ProjectSettings({ project, onDataChange }) {
   const [geminiToken, setGeminiToken] = useState(project.gemini_token || '');
   const [gitToken, setGitToken] = useState(project.git_token || '');
+  const [anthropicAuthToken, setAnthropicAuthToken] = useState(project.anthropic_auth_token || '');
+  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState(project.anthropic_base_url || '');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const { token } = useAuth();
 
@@ -17,7 +19,9 @@ function ProjectSettings({ project, onDataChange }) {
     
     const settings = {
         gemini_token: geminiToken,
-        git_token: gitToken
+        git_token: gitToken,
+        anthropic_auth_token: anthropicAuthToken,
+        anthropic_base_url: anthropicBaseUrl
     };
 
     fetch(`http://localhost:8000/api/projects/${project.name}/settings`, {
@@ -50,6 +54,28 @@ function ProjectSettings({ project, onDataChange }) {
         value={geminiToken}
         onChange={(e) => setGeminiToken(e.target.value)}
         helperText="This key will be injected into new environments as GEMINI_API_KEY."
+        sx={{ input: { color: 'white' }, label: { color: 'gray' } }}
+      />
+      <TextField
+        label="Anthropic Auth Token"
+        type="password"
+        fullWidth
+        margin="normal"
+        variant="outlined"
+        value={anthropicAuthToken}
+        onChange={(e) => setAnthropicAuthToken(e.target.value)}
+        helperText="This token will be injected into new Claude environments as ANTHROPIC_AUTH_TOKEN."
+        sx={{ input: { color: 'white' }, label: { color: 'gray' } }}
+      />
+      <TextField
+        label="Anthropic Base URL"
+        type="text"
+        fullWidth
+        margin="normal"
+        variant="outlined"
+        value={anthropicBaseUrl}
+        onChange={(e) => setAnthropicBaseUrl(e.target.value)}
+        helperText="Optional. Custom base URL for Claude API. Leave empty to use default."
         sx={{ input: { color: 'white' }, label: { color: 'gray' } }}
       />
       <TextField
