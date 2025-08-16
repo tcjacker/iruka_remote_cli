@@ -43,6 +43,14 @@ Thumbs.db
 backend/data/projects.json
 backend/data/db.json
 
+# Secrets and tokens
+*.token
+*.key
+*_token.txt
+*_key.txt
+secrets/
+.secrets
+
 # Logs
 logs/
 *.log
