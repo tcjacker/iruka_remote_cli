@@ -9,6 +9,12 @@ function ProjectSettings({ project, onDataChange }) {
   const { token } = useAuth();
 
   const handleSave = () => {
+    // Check if token exists before making authenticated requests
+    if (!token) {
+      console.warn('No auth token available, cannot save project settings');
+      return;
+    }
+    
     const settings = {
         gemini_token: geminiToken,
         git_token: gitToken

@@ -17,7 +17,24 @@ def sanitize_for_docker(name: str) -> str:
 
 @router.websocket("/ws/shell/{project_name}/{env_id}")
 async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
+    # Accept the connection first to be able to send error messages
     await websocket.accept()
+    
+    # Get the token from the query parameters
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.send_text("[Authentication Error] No token provided.\r\n")
+        await websocket.close()
+        return
+    
+    # Validate the token
+    from .auth import get_current_user
+    try:
+        user = get_current_user(token)
+    except Exception:
+        await websocket.send_text("[Authentication Error] Invalid token.\r\n")
+        await websocket.close()
+        return
     
     # URL decode the project name in case it contains UTF-8 encoded characters
     decoded_project_name = unquote(project_name)

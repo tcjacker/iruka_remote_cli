@@ -15,7 +15,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
     if (!project || !project.environments || project.environments.length === 0) return;
     
     const pendingEnvs = project.environments.filter(env => env.status === 'pending');
-    if (pendingEnvs.length === 0) return;
+    if (pendingEnvs.length === 0 || !token) return; // Don't check if no token
     
     const interval = setInterval(() => {
       pendingEnvs.forEach(env => {
@@ -33,6 +33,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
         })
         .catch(err => {
           console.error("Failed to check environment status:", err);
+          // Handle authentication or other errors appropriately
         });
       });
     }, 5000); // Check every 5 seconds
@@ -45,6 +46,12 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
   }
 
   const makeAuthenticatedRequest = (url, options = {}) => {
+    // Check if token exists before making authenticated requests
+    if (!token) {
+      console.warn('No auth token available, cannot make authenticated request to:', url);
+      return Promise.reject(new Error('No authentication token available'));
+    }
+    
     const defaultOptions = {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -57,19 +64,31 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
   const handleStop = (envId, e) => {
     e.stopPropagation();
     makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/stop`, { method: 'POST' })
-      .then(() => onDataChange());
+      .then(() => onDataChange())
+      .catch(err => {
+        console.error('Failed to stop environment:', err);
+        // Handle authentication or other errors appropriately
+      });
   };
 
   const handleStart = (envId, e) => {
     e.stopPropagation();
     makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/start`, { method: 'POST' })
-      .then(() => onDataChange());
+      .then(() => onDataChange())
+      .catch(err => {
+        console.error('Failed to start environment:', err);
+        // Handle authentication or other errors appropriately
+      });
   };
 
   const handleDelete = (envId, e) => {
     e.stopPropagation();
     makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}`, { method: 'DELETE' })
-      .then(() => onDataChange());
+      .then(() => onDataChange())
+      .catch(err => {
+        console.error('Failed to delete environment:', err);
+        // Handle authentication or other errors appropriately
+      });
   };
 
   return (

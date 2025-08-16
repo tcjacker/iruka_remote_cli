@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useAuth } from '../context/AuthContext';
 
 // This is a simplified and robust implementation inspired by the reference project.
 function Shell({ projectName, dockerId }) {
   const terminalRef = useRef(null);
   const isInitialized = useRef(false);
   const [isEnvironmentReady, setIsEnvironmentReady] = useState(false);
+  const { token } = useAuth();
 
   useEffect(() => {
     if (isInitialized.current || !terminalRef.current) {
@@ -32,7 +34,14 @@ function Shell({ projectName, dockerId }) {
     term.write("[Environment Initializing] Please wait while the environment is being set up...\r\n");
     term.write("[This may take a few minutes as we install Node.js, AI tools, and clone your repository.]\r\n\r\n");
 
-    const wsUrl = `ws://localhost:8000/ws/shell/${projectName}/${dockerId}`;
+    // Check if token exists before establishing WebSocket connection
+    if (!token) {
+      console.error("No auth token available for WebSocket connection");
+      term.write("[Authentication Error] No auth token available. Please log in again.\r\n");
+      return;
+    }
+    
+    const wsUrl = `ws://localhost:8000/ws/shell/${projectName}/${dockerId}?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     const sendJson = (data) => {
