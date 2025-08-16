@@ -88,12 +88,24 @@ class DockerService:
             else:
                 auth_url = f"https://{url_no_protocol}"
 
-            output = g.ls_remote('--heads', auth_url)
+            # Add timeout and error handling
+            import subprocess
+            try:
+                output = g.ls_remote('--heads', auth_url, timeout=30)
+            except subprocess.TimeoutExpired:
+                raise Exception("Git command timed out. Please check your network connection or repository URL.")
+            except Exception as e:
+                raise Exception(f"Failed to fetch remote branches: {str(e)}")
             
             branches = [line.split('\t')[1].replace('refs/heads/', '') for line in output.splitlines()]
             return sorted(branches)
+        except Exception as e:
+            raise e
         finally:
-            shutil.rmtree(temp_dir)
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
 
     def create_and_run_environment(
         self, container_name: str, base_image: str, git_repo_url: str, 
