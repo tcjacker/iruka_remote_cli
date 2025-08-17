@@ -34,12 +34,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN if [ -n "${http_proxy}" ]; then npm config set proxy ${http_proxy}; fi && \
     if [ -n "${https_proxy}" ]; then npm config set https-proxy ${https_proxy}; fi && \
     npm install -g @google/gemini-cli --no-audit --no-fund && \
-    npm config delete proxy && \
-    npm config delete https-proxy && \
+    if [ -n "${http_proxy}" ]; then npm config delete proxy; fi && \
+    if [ -n "${https_proxy}" ]; then npm config delete https-proxy; fi && \
     npm cache clean --force
 
 # Install Anthropic (Claude) Python library via pip with no cache
-RUN pip install --no-cache-dir --proxy ${https_proxy} anthropic
+RUN if [ -n "${https_proxy}" ]; then \
+        pip install --no-cache-dir --proxy ${https_proxy} anthropic; \
+    else \
+        pip install --no-cache-dir anthropic; \
+    fi
 
 # Add memory limit labels for container runtime
 LABEL memory.limit="1g"
