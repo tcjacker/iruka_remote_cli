@@ -4,6 +4,7 @@ import {
     InputLabel, RadioGroup, FormControlLabel, Radio, CircularProgress, Checkbox 
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 const style = {
   position: 'absolute',
@@ -44,7 +45,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       setGeminiUseGoogleLogin(false);
       
       // Fetch docker images with auth
-      fetch('http://localhost:8000/api/docker-images', {
+      fetch(apiConfig.buildApiUrl('/api/docker-images'), {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -74,7 +75,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
       
       // Fetch remote branches with auth and timeout
-      fetch(`http://localhost:8000/api/git/branches?repo_url=${repoUrl}&token=${gitApiToken}`, {
+      fetch(apiConfig.buildApiUrl(`/api/git/branches?repo_url=${repoUrl}&token=${gitApiToken}`), {
         headers: { 'Authorization': `Bearer ${token}` },
         signal: controller.signal
       })
@@ -127,7 +128,7 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
     };
 
     // Create environment with auth
-    fetch(`http://localhost:8000/api/projects/${project.name}/environments`, {
+    fetch(apiConfig.buildApiUrl(`/api/projects/${project.name}/environments`), {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',

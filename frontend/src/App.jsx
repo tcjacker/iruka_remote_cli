@@ -14,6 +14,7 @@ import Login from './pages/Login';
 import Initialize from './pages/Initialize';
 import Register from './pages/Register';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import apiConfig from './config/api';
 
 // --- Protected Route: Renders child routes if logged in, otherwise redirects to /login ---
 function ProtectedRoute() {
@@ -40,7 +41,7 @@ function App() {
 
   const handleLogin = async (username, password) => {
     console.log('Attempting login for user:', username);
-    const response = await fetch('http://localhost:8000/api/auth/token', {
+    const response = await fetch(apiConfig.buildApiUrl('/api/auth/token'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ username, password }),
@@ -85,7 +86,7 @@ function Initializer() {
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/auth/status');
+        const response = await fetch(apiConfig.buildApiUrl('/api/auth/status'));
         if (!response.ok) throw new Error('Could not connect to backend.');
         const data = await response.json();
         setNeedsInitialization(!data.has_users);

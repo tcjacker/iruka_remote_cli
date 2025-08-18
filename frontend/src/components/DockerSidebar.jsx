@@ -3,6 +3,7 @@ import { Drawer, List, ListItem, ListItemButton, ListItemText, Typography, Box, 
 import { Add, Stop, Delete, PlayArrow } from '@mui/icons-material';
 import NewEnvironmentModal from './NewEnvironmentModal';
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 const DRAWER_WIDTH = 280;
 
@@ -19,7 +20,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
     
     const interval = setInterval(() => {
       pendingEnvs.forEach(env => {
-        fetch(`http://localhost:8000/api/projects/${project.name}/environments/${env.id}/status`, {
+        fetch(apiConfig.buildApiUrl(`/api/projects/${project.name}/environments/${env.id}/status`), {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -63,7 +64,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
 
   const handleStop = (envId, e) => {
     e.stopPropagation();
-    makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/stop`, { method: 'POST' })
+    makeAuthenticatedRequest(apiConfig.buildApiUrl(`/api/projects/${project.name}/environments/${envId}/stop`), { method: 'POST' })
       .then(() => onDataChange())
       .catch(err => {
         console.error('Failed to stop environment:', err);
@@ -73,7 +74,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
 
   const handleStart = (envId, e) => {
     e.stopPropagation();
-    makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}/start`, { method: 'POST' })
+    makeAuthenticatedRequest(apiConfig.buildApiUrl(`/api/projects/${project.name}/environments/${envId}/start`), { method: 'POST' })
       .then(() => onDataChange())
       .catch(err => {
         console.error('Failed to start environment:', err);
@@ -83,7 +84,7 @@ function DockerSidebar({ project, onEnvSelect, selectedEnvId, onDataChange }) {
 
   const handleDelete = (envId, e) => {
     e.stopPropagation();
-    makeAuthenticatedRequest(`http://localhost:8000/api/projects/${project.name}/environments/${envId}`, { method: 'DELETE' })
+    makeAuthenticatedRequest(apiConfig.buildApiUrl(`/api/projects/${project.name}/environments/${envId}`), { method: 'DELETE' })
       .then(() => onDataChange())
       .catch(err => {
         console.error('Failed to delete environment:', err);

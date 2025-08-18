@@ -1,3 +1,5 @@
+import apiConfig from '../config/api';
+
 class WebSocketManager {
   constructor() {
     this.connections = new Map(); // envId -> { ws, terminal, isActive }
@@ -38,7 +40,7 @@ class WebSocketManager {
     }
 
     // Create new WebSocket connection
-    const wsUrl = `ws://localhost:8000/ws/shell/${projectName}/${envId}?token=${token}`;
+    const wsUrl = apiConfig.buildWsUrl(`/ws/shell/${projectName}/${envId}?token=${token}`);
     const ws = new WebSocket(wsUrl);
     
     const connection = {
@@ -250,7 +252,7 @@ class WebSocketManager {
     const [projectName, envId] = connectionKey.split('-');
     
     // Create new WebSocket connection
-    const wsUrl = `ws://localhost:8000/ws/shell/${projectName}/${envId}?token=${token}`;
+    const wsUrl = apiConfig.buildWsUrl(`/ws/shell/${projectName}/${envId}?token=${token}`);
     const newWs = new WebSocket(wsUrl);
     
     // Replace the old WebSocket

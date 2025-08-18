@@ -8,6 +8,7 @@ import {
   Typography,
   Alert,
 } from '@mui/material';
+import apiConfig from '../config/api';
 
 function Initialize() {
   const [username, setUsername] = useState('');
@@ -25,7 +26,7 @@ function Initialize() {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/auth/initialize', {
+      const response = await fetch(apiConfig.buildApiUrl('/api/auth/initialize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),

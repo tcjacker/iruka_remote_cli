@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 // This is a simplified and robust implementation inspired by the reference project.
 function Shell({ projectName, dockerId }) {
@@ -41,7 +42,7 @@ function Shell({ projectName, dockerId }) {
       return;
     }
     
-    const wsUrl = `ws://localhost:8000/ws/shell/${projectName}/${dockerId}?token=${token}`;
+    const wsUrl = apiConfig.buildWsUrl(`/ws/shell/${projectName}/${dockerId}?token=${token}`);
     const ws = new WebSocket(wsUrl);
 
     const sendJson = (data) => {

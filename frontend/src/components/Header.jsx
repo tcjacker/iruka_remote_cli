@@ -11,6 +11,7 @@ import {
   Button,
 } from "@mui/material";
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 function Header({ onLogout }) {
   const [projects, setProjects] = useState([]);
@@ -31,7 +32,7 @@ function Header({ onLogout }) {
     
     console.log('Fetching projects with token:', token.substring(0, 20) + '...'); // Log first 20 chars of token for debugging
     
-    fetch("http://localhost:8000/api/projects", {
+    fetch(apiConfig.buildApiUrl('/api/projects'), {
       headers: {
         Authorization: `Bearer ${token}`,
       },

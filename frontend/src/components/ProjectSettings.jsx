@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, TextField, Button, Typography, Snackbar } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 function ProjectSettings({ project, onDataChange }) {
   const [geminiToken, setGeminiToken] = useState(project.gemini_token || '');
@@ -26,7 +27,7 @@ function ProjectSettings({ project, onDataChange }) {
         anthropic_base_url: anthropicBaseUrl
     };
 
-    fetch(`http://localhost:8000/api/projects/${project.name}/settings`, {
+    fetch(apiConfig.buildApiUrl(`/api/projects/${project.name}/settings`), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
