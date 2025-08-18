@@ -137,7 +137,19 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
                             continue  # Skip forwarding to shell
                         
                         # Forward normal input to shell
-                        shell_socket.sendall(input_data.encode('utf-8'))
+                        try:
+                            # Try direct socket methods first (for regular sockets)
+                            if hasattr(shell_socket, 'sendall'):
+                                shell_socket.sendall(input_data.encode('utf-8'))
+                            # For Docker socket objects, use _sock if available
+                            elif hasattr(shell_socket, '_sock'):
+                                shell_socket._sock.sendall(input_data.encode('utf-8'))
+                            # For NpipeSocket or other socket types, try send method
+                            else:
+                                shell_socket.send(input_data.encode('utf-8'))
+                        except Exception as send_error:
+                            print(f"Error sending data to shell: {send_error}")
+                            break
                     elif msg.get('type') == 'resize':
                         docker_service.resize_shell(exec_id, msg['rows'], msg['cols'])
                     elif msg.get('type') == 'ping':
@@ -167,8 +179,23 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
             while True:
                 try:
                     # Add timeout to shell socket read
+                    def read_from_socket():
+                        try:
+                            # Try direct socket methods first (for regular sockets)
+                            if hasattr(shell_socket, 'recv'):
+                                return shell_socket.recv(4096)
+                            # For Docker socket objects, use _sock if available
+                            elif hasattr(shell_socket, '_sock'):
+                                return shell_socket._sock.recv(4096)
+                            # For other socket types, try read method
+                            else:
+                                return shell_socket.read(4096)
+                        except Exception as recv_error:
+                            print(f"Error reading from shell socket: {recv_error}")
+                            return None
+                    
                     output = await asyncio.wait_for(
-                        loop.run_in_executor(None, shell_socket.recv, 4096),
+                        loop.run_in_executor(None, read_from_socket),
                         timeout=WEBSOCKET_TIMEOUT
                     )
                     if output:

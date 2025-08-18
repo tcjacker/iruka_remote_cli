@@ -327,7 +327,7 @@ EOF
         total_time = time.time() - start_time
         print(f"[PERF] Total setup_shell_session took {total_time:.3f}s")
         
-        return exec_id, socket._sock
+        return exec_id, socket
 
     def resize_shell(self, exec_id: str, rows: int, cols: int):
         self.api_client.exec_resize(exec_id, height=rows, width=cols)
