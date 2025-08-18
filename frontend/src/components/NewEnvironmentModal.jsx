@@ -74,8 +74,8 @@ function NewEnvironmentModal({ open, handleClose, project, onCreated }) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
       
-      // Fetch remote branches with auth and timeout
-      fetch(apiConfig.buildApiUrl(`/api/git/branches?repo_url=${repoUrl}&token=${gitApiToken}`), {
+      // Fetch remote branches with auth and timeout - using project_name instead of token for security
+      fetch(apiConfig.buildApiUrl(`/api/git/branches?repo_url=${repoUrl}&project_name=${encodeURIComponent(project.name)}`), {
         headers: { 'Authorization': `Bearer ${token}` },
         signal: controller.signal
       })

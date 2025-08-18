@@ -14,4 +14,16 @@ const getApiConfig = () => {
   };
 };
 
-export default getApiConfig();
+const apiConfig = getApiConfig();
+
+export const checkRegistrationStatus = async () => {
+  const response = await fetch(`${apiConfig.buildApiUrl('/api/auth/check_register')}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  return response.json();
+};
+
+export default apiConfig;

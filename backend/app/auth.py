@@ -77,6 +77,8 @@ def get_users() -> List[User]:
 
 def create_user(user: UserCreate) -> User:
     db = _load_db()
+    if len(db.get("users", [])) > 0:
+        raise ValueError("Cannot create user, a user already exists.")
     if get_user(user.username):
         raise ValueError("Username already registered")
     
@@ -86,6 +88,8 @@ def create_user(user: UserCreate) -> User:
     db["users"].append(user_in_db.dict())
     _save_db(db)
     return user_in_db
+
+
 
 def authenticate_user(username: str, password: str) -> Optional[User]:
     user = get_user(username)
