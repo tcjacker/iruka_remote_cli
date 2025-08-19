@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, TextField, Button, Typography, Paper } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 function NewProject() {
   const [name, setName] = useState('');
@@ -15,7 +16,7 @@ function NewProject() {
     event.preventDefault();
     const projectData = { name, git_repo: gitRepo, git_token: gitToken, gemini_token: geminiToken };
 
-    fetch('http://localhost:8000/api/projects', {
+    fetch(apiConfig.buildApiUrl('/api/projects'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

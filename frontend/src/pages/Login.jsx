@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Container,
@@ -10,12 +10,30 @@ import {
   Grid,
   Link,
 } from '@mui/material';
+import { checkRegistrationStatus } from '../config/api';
 
 // This component will be rendered by App.jsx, which will provide the onLogin function.
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchRegistrationStatus = async () => {
+      try {
+        const data = await checkRegistrationStatus();
+        // If no users are registered (data is false), registration should be open
+        setIsRegistrationOpen(!data);
+      } catch (err) {
+        console.error('Failed to check registration status:', err);
+        // Default to closed if there's an error
+        setIsRegistrationOpen(false);
+      }
+    };
+
+    fetchRegistrationStatus();
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -87,11 +105,13 @@ function Login({ onLogin }) {
             Sign In
           </Button>
           <Grid container justifyContent="flex-end">
-            <Grid item>
-              <Link component={RouterLink} to="/register" variant="body2">
-                {"Don't have an account? Sign Up"}
-              </Link>
-            </Grid>
+            {isRegistrationOpen && (
+              <Grid item>
+                <Link component={RouterLink} to="/register" variant="body2">
+                  {"Don't have an account? Sign Up"}
+                </Link>
+              </Grid>
+            )}
           </Grid>
         </Box>
       </Box>

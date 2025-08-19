@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 # --- Configuration ---
 SECRET_KEY = "a_very_secret_key_that_should_be_in_env_vars"  # In a real app, use environment variables
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 DB_PATH = 'data/db.json'
 
 # --- Pydantic Models ---
@@ -77,6 +77,8 @@ def get_users() -> List[User]:
 
 def create_user(user: UserCreate) -> User:
     db = _load_db()
+    if len(db.get("users", [])) > 0:
+        raise ValueError("Cannot create user, a user already exists.")
     if get_user(user.username):
         raise ValueError("Username already registered")
     
@@ -86,6 +88,8 @@ def create_user(user: UserCreate) -> User:
     db["users"].append(user_in_db.dict())
     _save_db(db)
     return user_in_db
+
+
 
 def authenticate_user(username: str, password: str) -> Optional[User]:
     user = get_user(username)

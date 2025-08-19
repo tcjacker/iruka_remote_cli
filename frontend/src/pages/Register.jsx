@@ -10,6 +10,7 @@ import {
   Link,
   Grid,
 } from '@mui/material';
+import apiConfig from '../config/api';
 
 function Register() {
   const [username, setUsername] = useState('');
@@ -27,7 +28,7 @@ function Register() {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/auth/register', {
+      const response = await fetch(apiConfig.buildApiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),

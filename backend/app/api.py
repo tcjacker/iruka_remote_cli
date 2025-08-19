@@ -28,6 +28,7 @@ class Environment(BaseModel):
     id: str
     base_image: str
     status: str = "stopped"
+    sessionId: Optional[str] = None  # Cache for Claude session ID
 
 class Project(BaseModel):
     name: str
@@ -84,6 +85,8 @@ def initialize_first_user(user: UserCreate):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+
 @auth_router.post("/auth/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """Standard OAuth2 password flow to get a token."""
@@ -96,6 +99,12 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         )
     access_token = auth.create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@auth_router.post("/auth/check_register")
+def check_register():
+    return len(auth.get_users()) > 0
+
 
 @auth_router.post("/auth/register", response_model=User)
 def register_user(user: UserCreate):
@@ -133,10 +142,38 @@ async def update_project_settings(project_name: str, settings: ProjectSettingsUp
     return updated_project
 
 @api_router.get("/git/branches")
-async def get_remote_branches(repo_url: str, token: Optional[str] = None, current_user: User = Depends(get_current_user)):
+async def get_remote_branches(repo_url: str, project_name: str, current_user: User = Depends(get_current_user)):
+    import logging
+    logger = logging.getLogger("uvicorn")
+    
     try:
-        return docker_service.list_remote_branches(repo_url, token)
+        logger.info(f"[Git Branches API] 请求获取分支，项目名: {project_name}, 仓库URL: {repo_url}")
+        
+        # Get project to retrieve the token
+        project = project_service.get_project(project_name)
+        if not project:
+            logger.error(f"[Git Branches API] 项目不存在: {project_name}")
+            raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+            
+        # Clean the repo URL to remove any potential encoding issues
+        original_url = repo_url
+        repo_url = repo_url.strip()
+        
+        if original_url != repo_url:
+            logger.info(f"[Git Branches API] URL已清理，原始URL: {original_url}, 清理后: {repo_url}")
+        
+        # Get token from project
+        token = project.get("git_token")
+        token_status = "有效" if token else "未设置"
+        logger.info(f"[Git Branches API] 项目 {project_name} 的Git令牌状态: {token_status}")
+        
+        logger.info(f"[Git Branches API] 开始调用list_remote_branches函数获取分支")
+        branches = docker_service.list_remote_branches(repo_url, token)
+        logger.info(f"[Git Branches API] 成功获取到 {len(branches)} 个分支")
+        
+        return branches
     except Exception as e:
+        logger.error(f"[Git Branches API] 错误: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/projects/{project_name}/environments", response_model=Environment)
@@ -177,6 +214,7 @@ async def create_environment(project_name: str, env_data: EnvironmentCreate, cur
     # Add ai_tool to the environment data
     env_dict = new_env.dict()
     env_dict["ai_tool"] = env_data.ai_tool
+    env_dict["sessionId"] = None  # Initialize sessionId cache
     proj.setdefault("environments", []).append(env_dict)
     project_service.update_project(project_name, proj)
 

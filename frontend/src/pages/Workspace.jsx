@@ -6,6 +6,7 @@ import ProjectSettings from '../components/ProjectSettings';
 import { Box, Typography, CircularProgress, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import { ExpandMore } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import apiConfig from '../config/api';
 
 function Workspace() {
   const { projectName } = useParams();
@@ -27,7 +28,7 @@ function Workspace() {
     console.log('Fetching project data with token:', token.substring(0, 20) + '...'); // Log first 20 chars of token for debugging
     
     setIsLoading(true);
-    fetch('http://localhost:8000/api/projects', {
+    fetch(apiConfig.buildApiUrl('/api/projects'), {
       headers: {
         'Authorization': `Bearer ${token}`,
       },

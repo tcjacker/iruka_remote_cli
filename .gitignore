@@ -1,5 +1,4 @@
 # Environments
-.env
 .env*.local
 .env.*.local
 
@@ -54,3 +53,4 @@ secrets/
 # Logs
 logs/
 *.log
+/backend/data/

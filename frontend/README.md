@@ -1,11 +1,26 @@
-# React + Vite
+# Iruka Remote CLI - 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+这是 Iruka Remote CLI 项目的前端部分，基于 React + Vite 构建。
 
-Currently, two official plugins are available:
+## 后端服务器配置
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+您可以通过环境变量配置后端服务器地址。创建或编辑 `.env` 文件：
+
+```env
+# HTTP API 基础 URL
+VITE_API_BASE_URL=http://localhost:8000
+
+# WebSocket 基础 URL  
+VITE_WS_BASE_URL=ws://localhost:8000
+```
+
+## 开发指南
+
+1. 安装依赖：`npm install`
+2. 启动开发服务器：`npm run dev`
+3. 构建生产版本：`npm run build`
+
+详细配置说明请参考 [CONFIG.md](CONFIG.md)。
 
 ## Expanding the ESLint configuration
 
