@@ -152,7 +152,7 @@ class DockerService:
                     ['git', 'ls-remote', '--heads', auth_url],
                     capture_output=True,
                     text=True,
-                    timeout=10,  # 10-second timeout
+                    timeout=30,  # 30-second timeout
                     check=True
                 )
                 
