@@ -13,7 +13,7 @@ function Workspace() {
   const [project, setProject] = useState(null);
   const [selectedEnvId, setSelectedEnvId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   
   console.log('Workspace component rendered, token:', token ? token.substring(0, 20) + '...' : 'null');
 
@@ -27,7 +27,9 @@ function Workspace() {
     
     console.log('Fetching project data with token:', token.substring(0, 20) + '...'); // Log first 20 chars of token for debugging
     
-    setIsLoading(true);
+    // Don't set loading to true for background refreshes
+    // setIsLoading(true); 
+    
     fetch(apiConfig.buildApiUrl('/api/projects'), {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -35,7 +37,15 @@ function Workspace() {
     })
       .then(res => {
         console.log('Project data fetch response status:', res.status);
-        if (!res.ok) throw new Error('Failed to fetch project data');
+        if (res.status === 401) {
+          console.error('Authentication error: Token is invalid or expired. Logging out.');
+          logout(); // Perform logout on authentication failure
+          throw new Error('Authentication failed');
+        }
+        if (!res.ok) {
+          // For other server errors, just throw an error to be caught, but don't clear data
+          throw new Error(`Failed to fetch project data, status: ${res.status}`);
+        }
         return res.json();
       })
       .then(projects => {
@@ -47,8 +57,9 @@ function Workspace() {
         }
       })
       .catch(error => {
+        // We only log the error now, and no longer clear the project data for transient errors.
+        // The logout is handled specifically for 401 errors.
         console.error('Error fetching project:', error.message);
-        setProject(null); // Clear project on error
       })
       .finally(() => setIsLoading(false));
   };
