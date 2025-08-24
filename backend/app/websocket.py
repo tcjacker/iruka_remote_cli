@@ -55,9 +55,15 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
         await websocket.send_text("[Error] Invalid project name encoding.\r\n")
         await websocket.close()
         return
+        
+    # On successful connection, clear the disconnected_at timestamp
+    from .services import project_service
+    project_service.update_environment_status(
+        decoded_project_name, env_id, {"disconnected_at": None}
+    )
+    print(f"Cleared disconnected_at timestamp for env {env_id}")
     
     # First check if the environment is still initializing
-    from .services import project_service
     proj = project_service.get_project(decoded_project_name)
     if proj:
         env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
@@ -219,6 +225,13 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
         traceback.print_exc()
         await websocket.send_text(f"[Error] {str(e)}\r\n")
     finally:
+        # Set the disconnected_at timestamp when the client disconnects
+        from .services import project_service
+        project_service.update_environment_status(
+            decoded_project_name, env_id, {"disconnected_at": time.time()}
+        )
+        print(f"Set disconnected_at timestamp for env {env_id}")
+        
         if shell_socket:
             try:
                 shell_socket.close()

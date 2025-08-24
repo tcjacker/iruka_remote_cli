@@ -65,6 +65,20 @@ class ProjectService:
         self._save_data(data)
         return data["projects"][i]
 
+    def update_environment_status(self, project_name: str, env_id: str, updates: Dict[str, Any]):
+        """Updates a specific environment within a project."""
+        data = self._load_data()
+        projects = data.get("projects", [])
+        for proj in projects:
+            if proj.get("name") == project_name:
+                environments = proj.get("environments", [])
+                for env in environments:
+                    if env.get("id") == env_id:
+                        env.update(updates)
+                        self._save_data(data)
+                        return True
+        return False
+
 # --- Docker Service ---
 # (DockerService class remains unchanged as it doesn't handle project data persistence)
 
@@ -284,7 +298,10 @@ EOF
             container = self.client.containers.get(container_name)
             if container.status == "running":
                 container.stop()
-        except docker.errors.NotFound: pass
+        except docker.errors.NotFound:
+            print(f"Container {container_name} not found, skipping stop.")
+        except Exception as e:
+            print(f"Error stopping container {container_name}: {e}")
 
     def start_container(self, container_name: str):
         try:
@@ -298,7 +315,14 @@ EOF
         try:
             container = self.client.containers.get(container_name)
             container.remove(force=True)
-        except docker.errors.NotFound: pass
+        except docker.errors.NotFound:
+            print(f"Container {container_name} not found, skipping remove.")
+        except Exception as e:
+            print(f"Error removing container {container_name}: {e}")
+
+    def stop_and_remove_container(self, container_name: str):
+        self.stop_container(container_name)
+        self.remove_container(container_name)
 
     def setup_shell_session(self, container_name: str, ai_tool: str = "gemini"):
         import time
