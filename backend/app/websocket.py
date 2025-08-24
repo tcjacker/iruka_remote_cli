@@ -104,30 +104,32 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
         websocket_setup_time = time.time() - websocket_setup_start
         print(f"[PERF] WebSocket shell session set up successfully in {websocket_setup_time:.3f}s. exec_id: {exec_id}")
         
+        # Use a mutable type (dict) to share the last activity time between tasks
+        last_activity = {'time': time.time()}
+
         async def forward_client_to_shell():
-            """Reads from the client and sends to the shell."""
-            last_activity = time.time()
+            """Reads from the client, sends to the shell, and manages connection timeout."""
             while True:
                 try:
-                    # Wait for message with timeout
+                    # Wait for a message from the client with a timeout
                     raw_data = await asyncio.wait_for(
                         websocket.receive_text(), 
                         timeout=WEBSOCKET_TIMEOUT
                     )
                     msg = json.loads(raw_data)
-                    last_activity = time.time()
+                    
+                    # Any input from the client resets the activity timer
+                    last_activity['time'] = time.time()
                     
                     if msg.get('type') == 'input':
                         input_data = msg['data']
                         # Handle /clear command
                         if input_data.strip() == '/clear':
-                            # Send clear screen ANSI sequence to client
                             await websocket.send_text(json.dumps({
                                 'type': 'output',
                                 'data': '\033[2J\033[H'
                             }))
-                            
-                            # Clear sessionId cache for this environment
+                            # Clear sessionId cache for Claude
                             try:
                                 from .services import project_service
                                 proj = project_service.get_project(decoded_project_name)
@@ -135,22 +137,18 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
                                     env = next((e for e in proj.get("environments", []) if e["id"] == env_id), None)
                                     if env:
                                         env["sessionId"] = None
-                                        project_service.save_project(decoded_project_name, proj)
+                                        project_service.update_project(decoded_project_name, proj)
                                         print(f"Cleared sessionId cache for environment {env_id}")
                             except Exception as e:
                                 print(f"Failed to clear sessionId cache: {e}")
-                            
-                            continue  # Skip forwarding to shell
+                            continue
                         
                         # Forward normal input to shell
                         try:
-                            # Try direct socket methods first (for regular sockets)
                             if hasattr(shell_socket, 'sendall'):
                                 shell_socket.sendall(input_data.encode('utf-8'))
-                            # For Docker socket objects, use _sock if available
                             elif hasattr(shell_socket, '_sock'):
                                 shell_socket._sock.sendall(input_data.encode('utf-8'))
-                            # For NpipeSocket or other socket types, try send method
                             else:
                                 shell_socket.send(input_data.encode('utf-8'))
                         except Exception as send_error:
@@ -159,21 +157,23 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
                     elif msg.get('type') == 'resize':
                         docker_service.resize_shell(exec_id, msg['rows'], msg['cols'])
                     elif msg.get('type') == 'ping':
-                        # Respond to ping with pong
                         await websocket.send_text(json.dumps({'type': 'pong', 'timestamp': time.time()}))
+
                 except asyncio.TimeoutError:
-                    # Check if connection has been idle too long
-                    if time.time() - last_activity > MAX_IDLE_TIME:
-                        print(f"WebSocket idle timeout after {MAX_IDLE_TIME} seconds")
+                    # This timeout triggers if the client hasn't sent any message.
+                    # Now, we check the *shared* last activity time.
+                    if time.time() - last_activity['time'] > MAX_IDLE_TIME:
+                        print(f"WebSocket idle timeout after {MAX_IDLE_TIME} seconds of no activity (input or output).")
                         break
-                    # Send heartbeat if no recent activity
+                    
+                    # If the connection is not idle, send a heartbeat to keep it alive
                     try:
                         await websocket.send_text(json.dumps({'type': 'heartbeat', 'timestamp': time.time()}))
                     except Exception:
-                        print("Failed to send heartbeat, connection likely dead")
+                        print("Failed to send heartbeat, connection likely dead.")
                         break
                 except WebSocketDisconnect:
-                    print("WebSocket disconnected")
+                    print("WebSocket disconnected by client.")
                     break
                 except Exception as e:
                     print(f"Error in forward_client_to_shell: {e}")
@@ -184,18 +184,16 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
             loop = asyncio.get_running_loop()
             while True:
                 try:
-                    # Add timeout to shell socket read
                     def read_from_socket():
                         try:
-                            # Try direct socket methods first (for regular sockets)
                             if hasattr(shell_socket, 'recv'):
                                 return shell_socket.recv(4096)
-                            # For Docker socket objects, use _sock if available
                             elif hasattr(shell_socket, '_sock'):
                                 return shell_socket._sock.recv(4096)
-                            # For other socket types, try read method
                             else:
                                 return shell_socket.read(4096)
+                        except (socket.timeout, BlockingIOError):
+                            return None # Non-blocking, so it's okay to get nothing
                         except Exception as recv_error:
                             print(f"Error reading from shell socket: {recv_error}")
                             return None
@@ -204,13 +202,19 @@ async def websocket_shell(websocket: WebSocket, project_name: str, env_id: str):
                         loop.run_in_executor(None, read_from_socket),
                         timeout=WEBSOCKET_TIMEOUT
                     )
+
                     if output:
+                        # Any output from the shell resets the activity timer
+                        last_activity['time'] = time.time()
                         await websocket.send_text(output.decode('utf-8', errors='ignore'))
                     else:
-                        print("No more output from shell")
-                        break
+                        # If read_from_socket returns None because of an error or clean close
+                        is_socket_closed = not hasattr(shell_socket, 'fileno') or shell_socket.fileno() == -1
+                        if is_socket_closed:
+                             print("No more output from shell, socket is closed.")
+                             break
                 except asyncio.TimeoutError:
-                    # Continue the loop, timeout is normal for shell reads
+                    # This is normal if the shell has no output. Continue waiting.
                     continue
                 except Exception as e:
                     print(f"Error in forward_shell_to_client: {e}")
