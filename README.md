@@ -92,27 +92,27 @@ The frontend will be accessible at `http://localhost:5173` (or the next availabl
 ## How to Use
 
 1.  **Create a Project**:
-        - Open the web UI in your browser.
-        - Click on "New Project".
-        - Fill in the project name and the **HTTPS URL** of your Git repository.
-        - Optionally, add your Git Personal Access Token (required for private repos) and your API keys for Gemini and/or Claude.
-    2.  **Open Project Workspace**:
-        - Select your newly created project from the dropdown menu in the top header.
-    3.  **Manage Settings (Optional)**:
-        - In the workspace, you can expand the "Project Settings" area to add or update your Git, Gemini, and Anthropic API tokens at any time.
-    4.  **Create a New Environment**:
-        - In the left sidebar, click the "**+ New**" button.
-        - Give your environment a name (e.g., `feature-new-login`).
-        - Choose your branching strategy:
-            - **Create new branch**: A new branch named `feature/<your-env-name>` will be created locally and pushed to your remote repository.
-            - **Use existing branch**: Select a branch from the dropdown of all available remote branches (this list is cached for performance).
-        - Select your desired **AI Tool** (Gemini or Claude).
-        - Select a base Docker image for the environment (e.g., `ubuntu:latest`).
-        - Click "Create".
-    5.  **Connect to the AI Shell**:
-        - Wait for the environment's status to become "running". This may take a few minutes as it installs dependencies.
-        - Click on the running environment in the left sidebar.
-        - The terminal on the right will connect and drop you directly into your chosen AI's interactive shell, ready for you to start coding.
+    - Open the web UI in your browser.
+    - Click on "New Project".
+    - Fill in the project name and the **HTTPS URL** of your Git repository.
+    - Optionally, add your Git Personal Access Token (required for private repos) and your API keys for Gemini and/or Claude.
+2.  **Open Project Workspace**:
+    - Select your newly created project from the dropdown menu in the top header.
+3.  **Manage Settings (Optional)**:
+    - In the workspace, you can expand the "Project Settings" area to add or update your Git, Gemini, and Anthropic API tokens at any time.
+4.  **Create a New Environment**:
+    - In the left sidebar, click the "**+ New**" button.
+    - Give your environment a name (e.g., `feature-new-login`).
+    - Choose your branching strategy:
+        - **Create new branch**: A new branch named `feature/<your-env-name>` will be created locally and pushed to your remote repository.
+        - **Use existing branch**: Select a branch from the dropdown of all available remote branches (this list is cached for performance).
+    - Select your desired **AI Tool** (Gemini or Claude).
+    - Select a base Docker image for the environment (e.g., `ubuntu:latest`).
+    - Click "Create".
+5.  **Connect to the AI Shell**:
+    - Wait for the environment's status to become "running". This may take a few minutes as it installs dependencies.
+    - Click on the running environment in the left sidebar.
+    - The terminal on the right will connect and drop you directly into your chosen AI's interactive shell, ready for you to start coding.
 
 ## License
 
